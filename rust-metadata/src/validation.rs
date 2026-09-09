@@ -13,11 +13,13 @@ const OMITTED_DUPLICATES: [&str; 3] = [
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Snapshot {
     types: BTreeMap<String, TypeRecord>,
+    bytes: Vec<u8>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct TypeRecord {
     category: String,
+    flags: u32,
     extends: Option<String>,
     interfaces: Vec<String>,
     layout: Option<(u16, u32)>,
@@ -59,6 +61,8 @@ struct ParameterRecord {
 }
 
 pub fn load(path: &Path) -> Result<Snapshot, String> {
+    let bytes = std::fs::read(path)
+        .map_err(|error| format!("failed to read metadata from {}: {error}", path.display()))?;
     let index = Index::read(path)
         .ok_or_else(|| format!("failed to read metadata from {}", path.display()))?;
     let mut types = BTreeMap::new();
@@ -71,11 +75,14 @@ pub fn load(path: &Path) -> Result<Snapshot, String> {
         }
     }
 
-    Ok(Snapshot { types })
+    Ok(Snapshot { types, bytes })
 }
 
 pub fn compare(baseline: &Snapshot, candidate: &Snapshot) -> Vec<String> {
     let mut differences = Vec::new();
+    if baseline.bytes != candidate.bytes {
+        differences.push("metadata bytes changed".to_string());
+    }
 
     for (name, expected) in &baseline.types {
         let Some(actual) = candidate.types.get(name) else {
@@ -225,6 +232,7 @@ fn type_record(def: TypeDef<'_>) -> Result<TypeRecord, String> {
 
     Ok(TypeRecord {
         category: format!("{:?}", def.category()),
+        flags: def.flags().0,
         extends,
         interfaces,
         layout,
@@ -369,6 +377,12 @@ fn describe_type_difference(
             expected.category, actual.category
         ));
     }
+    if expected.flags != actual.flags {
+        differences.push(format!(
+            "{name}: type flags changed from {:#x} to {:#x}",
+            expected.flags, actual.flags
+        ));
+    }
     if expected.extends != actual.extends {
         differences.push(format!(
             "{name}: base type changed from {:?} to {:?}",
@@ -428,6 +442,7 @@ mod tests {
     fn record() -> TypeRecord {
         TypeRecord {
             category: "Interface".to_string(),
+            flags: 0,
             extends: None,
             interfaces: Vec::new(),
             layout: None,
@@ -445,6 +460,7 @@ mod tests {
                 .iter()
                 .map(|(name, record)| ((*name).to_string(), record.clone()))
                 .collect(),
+            bytes: Vec::new(),
         }
     }
 
@@ -573,6 +589,12 @@ mod tests {
         let mut changed = baseline_record.clone();
         changed.category = "Struct".to_string();
         assert!(compare(&baseline, &snapshot(&[(name, changed)]))[0].contains("category changed"));
+
+        let mut changed = baseline_record.clone();
+        changed.flags = 0x10;
+        assert!(
+            compare(&baseline, &snapshot(&[(name, changed)]))[0].contains("type flags changed")
+        );
 
         let mut changed = baseline_record.clone();
         changed.extends = Some("Microsoft.ServiceFabric.IBase".to_string());

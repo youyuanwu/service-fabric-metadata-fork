@@ -3,7 +3,7 @@
 // need no definition.)
 //
 // The SF headers reference FILETIME, which is defined in a Windows SDK header,
-// not in the SF IDL. The dotnet win32metadata flow resolved that reference to
+// not in the SF IDL. The former generator resolved that reference to
 // the external Windows.Win32.Foundation.FILETIME. Doing the equivalent with the
 // Rust flow (referencing the flat Windows.Win32 winmd) makes the generated SF
 // winmd multi-rooted (`Microsoft` + `Windows`), which the new windows-bindgen

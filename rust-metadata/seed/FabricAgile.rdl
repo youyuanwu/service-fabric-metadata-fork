@@ -4,7 +4,7 @@
 // windows-bindgen emits `unsafe impl Send/Sync` for an interface only when its
 // metadata carries `MarshalingBehaviorAttribute` with `MarshalingType.Agile`
 // (value 2) — see `TypeDefExt::is_agile` in the bindgen `type_def` table. The
-// dotnet win32metadata flow marked the SF interfaces agile; windows-clang does
+// The former generator marked the SF interfaces agile; windows-clang does
 // not, so every scraped interface would otherwise come out `!Send`/`!Sync`,
 // breaking mssf-core's async runtime (which moves COM interfaces across
 // threads). SF COM objects are genuinely free-threaded, so marking them agile

@@ -13,41 +13,33 @@ following windows-rs issue
 [#4194](https://github.com/microsoft/windows-rs/issues/4194) and the
 `crates/tools/win32` + `crates/tools/package` examples.
 
-The relevant crates (`windows-clang`, `windows-rdl`, `windows-metadata`) are not
-yet published, so they are consumed as **git dependencies** from the windows-rs
-repository.
+The relevant windows-rs crates are consumed from their published `0.100.0`
+releases on crates.io.
 
 ## Crate publication status
 
-As of 2026-07-15, the crates this experiment depends on are **not published** —
-git dependencies are mandatory, not a convenience:
+As of 2026-09-09, the complete windows-rs metadata toolchain is published on
+crates.io at `0.100.0`:
 
-| Crate | crates.io | Status |
+| Crate | Version | Use in this experiment |
 |---|---|---|
-| `windows-clang` | `0.0.0` only | Empty placeholder (~760 bytes, 0 lines of code), name reserved 2025-01-24. **Not published.** |
-| `windows-rdl` | `0.0.0` only | Empty placeholder (~750 bytes, 0 lines), name reserved 2025-04-16. **Not published.** |
-| `windows-metadata` | 0.60.0 | Published; matches the git tree. |
-| `windows-bindgen` | 0.66.0 (2026-01-08) | Published, but **predates** the in-house-metadata work below. |
-| `windows-core` | 0.62.2 | Published. |
+| `windows-clang` | 0.100.0 | C/C++ header to RDL scraping |
+| `windows-rdl` | 0.100.0 | RDL to winmd compilation |
+| `windows-metadata` | 0.100.0 | Shared ECMA-335 metadata model |
+| `windows-default` | 0.100.0 | Embedded flat Win32 reference metadata |
+| `windows-bindgen` | 0.100.0 | Downstream Rust bindings generation |
+| `windows-core` | 0.100.0 | Downstream COM and Windows runtime support |
 
-The winmd **generation** path (`windows-clang` + `windows-rdl`) therefore exists
-only in the windows-rs git repo.
+Git dependencies are no longer required. The migration from the pre-release git
+API required these mechanical changes:
 
-Two timing caveats matter for adoption:
-
-- The in-house metadata generation series
-  ([#4649](https://github.com/microsoft/windows-rs/pull/4649),
-  [#4689](https://github.com/microsoft/windows-rs/pull/4689),
-  [#4693](https://github.com/microsoft/windows-rs/pull/4693)) landed
-  2026-07-13, roughly six months **after** the published `windows-bindgen`
-  0.66.0 (2026-01-08). The in-tree version is still labeled `0.66.0`, so this
-  work has not been released under a new number yet.
-- Consequently the **published** `windows-bindgen` (0.66.0) still honors
-  `AgileAttribute`; the change that ignores it (see below) is git-only and not in
-  any release.
-
-This is fast-moving, unreleased upstream code — track the windows-rs releases
-before committing to a migration.
+- `Clang::input_str(...)` became `Clang::input_text(...)`.
+- Header/RDL inputs and winmd references are now separate: use
+   `Clang::reference(...)` and `Reader::reference(...)` for winmd files.
+- Builder path arguments now take `AsRef<Path>` directly.
+- The matching flat Win32 reference is materialized from
+   `windows_default::WIN32`, removing the dependency on Cargo's git checkout
+   layout.
 
 ## Pipeline
 

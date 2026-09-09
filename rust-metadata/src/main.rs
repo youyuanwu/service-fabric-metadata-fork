@@ -15,11 +15,26 @@ struct Partition {
 }
 
 const PARTITIONS: &[Partition] = &[
-    Partition { namespace: "Microsoft.ServiceFabric.FabricTypes", header: "FabricTypes" },
-    Partition { namespace: "Microsoft.ServiceFabric.FabricCommon", header: "FabricCommon" },
-    Partition { namespace: "Microsoft.ServiceFabric.FabricClient", header: "FabricClient" },
-    Partition { namespace: "Microsoft.ServiceFabric.FabricRuntime", header: "FabricRuntime" },
-    Partition { namespace: "Microsoft.ServiceFabric.FabricTransport", header: "fabrictransport_" },
+    Partition {
+        namespace: "Microsoft.ServiceFabric.FabricTypes",
+        header: "FabricTypes",
+    },
+    Partition {
+        namespace: "Microsoft.ServiceFabric.FabricCommon",
+        header: "FabricCommon",
+    },
+    Partition {
+        namespace: "Microsoft.ServiceFabric.FabricClient",
+        header: "FabricClient",
+    },
+    Partition {
+        namespace: "Microsoft.ServiceFabric.FabricRuntime",
+        header: "FabricRuntime",
+    },
+    Partition {
+        namespace: "Microsoft.ServiceFabric.FabricTransport",
+        header: "fabrictransport_",
+    },
 ];
 
 /// The `.idl` files to compile, resolved relative to the repository root.
@@ -75,8 +90,8 @@ fn main() {
     // `Windows.Win32.Foundation.Metadata`, so it cannot be used as the reference
     // here. Consequence: the generated SF winmd is tied to the new flat Win32
     // layout (and the matching new windows-bindgen consumer).
-    let win32_winmd = find_win32_winmd();
-    println!("win32 winmd: {win32_winmd}");
+    let win32_winmd = write_default_win32(&out);
+    println!("win32 winmd: {}", win32_winmd.display());
 
     // 2. IDL -> C/C++ headers via MIDL.
     let midl = find_midl();
@@ -152,13 +167,13 @@ fn main() {
             .args(&include_args)
             .namespace(p.namespace)
             .filter(&format!("{}.h", p.header))
-            .input_str(&source)
-            .input(&win32_winmd)
-            .output(&rdl_path.to_string_lossy());
+            .input_text(&source)
+            .reference(&win32_winmd)
+            .output(&rdl_path);
         // Already-built partitions act as the cross-namespace reference so
         // clang emits qualified names for their types.
         for winmd in &built_winmds {
-            clang.input(winmd);
+            clang.reference(winmd);
         }
         println!("scraping {} -> {}", p.header, rdl_path.display());
         clang
@@ -184,8 +199,10 @@ fn main() {
             // alias at the Win32 PCWSTR builtin so the whole chain (LPCWSTR,
             // FABRIC_URI, and every struct field that uses them) projects as
             // `windows_core::PCWSTR` again.
-            let rewritten =
-                rewritten.replace("type LPCWSTR = *const u16;", "type LPCWSTR = Windows::Win32::PCWSTR;");
+            let rewritten = rewritten.replace(
+                "type LPCWSTR = *const u16;",
+                "type LPCWSTR = Windows::Win32::PCWSTR;",
+            );
 
             // Restore FABRIC_URI as a distinct newtype. The old dotnet toolchain
             // emitted `pub struct FABRIC_URI(pub *mut u16)`, but the new
@@ -234,8 +251,8 @@ fn main() {
         // intermediate winmd that later partitions reference.
         let part_winmd = winmd_dir.join(format!("{}.winmd", p.header));
         let mut reader = windows_rdl::reader();
-        reader.input(&rdl_path.to_string_lossy());
-        reader.input(&win32_winmd);
+        reader.input(&rdl_path);
+        reader.reference(&win32_winmd);
         // The alias seed lives in the FabricTypes namespace; supply it when
         // compiling that partition so its winmd (and every downstream
         // reference) carries FABRIC_STRING_PAIR. The FILETIME seed is supplied
@@ -250,10 +267,10 @@ fn main() {
             reader.input(&agile_seed);
         }
         for winmd in &built_winmds {
-            reader.input(winmd);
+            reader.reference(winmd);
         }
         reader
-            .output(&part_winmd.to_string_lossy())
+            .output(&part_winmd)
             .write()
             .unwrap_or_else(|e| panic!("winmd compile of {} failed: {e}", p.header));
 
@@ -269,43 +286,30 @@ fn main() {
     // 4. Compile all RDL partitions together into the single combined winmd.
     // Every RDL now carries qualified cross-namespace names, so all five
     // namespaces resolve against each other with no external reference.
-    println!("compiling {} rdl partitions -> {}", rdl_paths.len(), winmd_out.display());
+    println!(
+        "compiling {} rdl partitions -> {}",
+        rdl_paths.len(),
+        winmd_out.display()
+    );
     let mut reader = windows_rdl::reader();
     reader.inputs(&rdl_paths);
-    reader.input(&win32_winmd);
+    reader.reference(&win32_winmd);
     reader
-        .output(&winmd_out.to_string_lossy())
+        .output(&winmd_out)
         .write()
         .unwrap_or_else(|e| panic!("winmd compile failed: {e}"));
 
     println!("wrote {}", winmd_out.display());
 }
 
-/// Locates the flat `Windows.Win32.winmd` that windows-rs ships, inside the
-/// cargo git checkout of the windows-rs dependency. This is the reference the
-/// RDL reader requires (its pseudo-attribute namespace is hardcoded to the
-/// flat `Windows.Win32.Metadata` layout this winmd uses).
-fn find_win32_winmd() -> String {
-    let cargo_home = std::env::var("CARGO_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            PathBuf::from(std::env::var("USERPROFILE").expect("USERPROFILE")).join(".cargo")
-        });
-    let checkouts = cargo_home.join("git").join("checkouts");
-    for repo in std::fs::read_dir(&checkouts).expect("cargo git checkouts").flatten() {
-        if !repo.file_name().to_string_lossy().starts_with("windows-rs-") {
-            continue;
-        }
-        for rev in std::fs::read_dir(repo.path()).expect("checkout revs").flatten() {
-            let candidate = rev
-                .path()
-                .join("crates/libs/bindgen/default/Windows.Win32.winmd");
-            if candidate.is_file() {
-                return candidate.to_string_lossy().replace('\\', "/");
-            }
-        }
-    }
-    panic!("could not locate Windows.Win32.winmd in the windows-rs git checkout");
+/// Materializes the flat Win32 metadata embedded by the published
+/// `windows-default` crate so windows-clang and windows-rdl can consume it as a
+/// normal file reference.
+fn write_default_win32(out: &Path) -> PathBuf {
+    let path = out.join("Windows.Win32.winmd");
+    std::fs::write(&path, windows_default::WIN32)
+        .unwrap_or_else(|e| panic!("write {} failed: {e}", path.display()));
+    path
 }
 
 /// Locates the newest `x64\midl.exe` under the Windows Kits 10 bin directory.

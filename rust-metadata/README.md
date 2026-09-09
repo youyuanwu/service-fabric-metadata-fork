@@ -7,8 +7,9 @@ and `windows-rdl` (see windows-rs issue
 [#4194](https://github.com/microsoft/windows-rs/issues/4194) and the
 `tools/win32` / `tools/package` examples).
 
-The crates are not yet published, so they are referenced as git dependencies in
-[Cargo.toml](Cargo.toml).
+The generator uses the published `0.100.0` releases from crates.io. The
+`windows-default` crate supplies the matching flat `Windows.Win32.winmd`
+metadata embedded in the release.
 
 ## What it does
 

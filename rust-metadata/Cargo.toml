@@ -12,10 +12,10 @@ publish = false
 # `windows-clang` / `windows-rdl` crates (Rust) instead of the dotnet
 # win32metadata (`Microsoft.Windows.WinmdGenerator`) toolchain.
 #
-# These crates are not yet published to crates.io, so they are referenced
-# directly from the windows-rs git repository. All three resolve from the same
-# git checkout so their internal `workspace = true` path dependencies line up.
+# Keep these crates on the same release because they share metadata and RDL
+# contracts.
 [dependencies]
-windows-clang = { git = "https://github.com/microsoft/windows-rs" }
-windows-rdl = { git = "https://github.com/microsoft/windows-rs" }
-windows-metadata = { git = "https://github.com/microsoft/windows-rs" }
+windows-clang = "0.100.0"
+windows-default = "0.100.0"
+windows-rdl = "0.100.0"
+windows-metadata = "0.100.0"

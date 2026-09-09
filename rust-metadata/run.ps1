@@ -39,6 +39,7 @@ $midl = Get-ChildItem -Path $windowsKitsBin -Filter midl.exe -File -Recurse -Err
 if (-not $midl) {
     throw "x64 midl.exe not found under '$windowsKitsBin'. Install a Windows 10/11 SDK, or set SF_METADATA_WINDOWS_KITS_BIN."
 }
+$env:SF_METADATA_MIDL = $midl.FullName
 
 Import-Module $devShell
 Enter-VsDevShell -VsInstallPath $vsPath -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64' | Out-Null

@@ -307,7 +307,8 @@ fn add_agility_attributes(input: &str) -> String {
                 .split(|character: char| !character.is_ascii_alphanumeric() && character != '_')
                 .next()
                 .unwrap_or_default();
-            if name.starts_with("IFabric")
+            if name.len() > "IFabric".len()
+                && name.starts_with("IFabric")
                 && name
                     .chars()
                     .all(|character| character.is_ascii_alphanumeric() || character == '_')
@@ -335,6 +336,16 @@ fn write_default_win32(out: &Path) -> PathBuf {
 
 /// Locates the newest `x64\midl.exe` under the Windows Kits 10 bin directory.
 fn find_midl() -> PathBuf {
+    if let Some(path) = std::env::var_os("SF_METADATA_MIDL") {
+        let path = PathBuf::from(path);
+        assert!(
+            path.is_file(),
+            "SF_METADATA_MIDL does not point to a file: {}",
+            path.display()
+        );
+        return path;
+    }
+
     let base = Path::new(r"C:\Program Files (x86)\Windows Kits\10\bin");
     let mut candidates: Vec<PathBuf> = std::fs::read_dir(base)
         .expect("Windows Kits 10 bin directory")
@@ -376,6 +387,7 @@ mod tests {
         let input = concat!(
             "            interface IFabricClient : IUnknown {\n",
             "            interface IExtentLogicalLog : IUnknown {\n",
+            "            interface IFabric : IUnknown {\n",
             "            interface IFabric_Test : IUnknown {\n",
         );
 
@@ -387,5 +399,6 @@ mod tests {
         assert!(
             !output.contains("MarshalingBehavior(Agile)]\n            interface IExtentLogicalLog")
         );
+        assert!(!output.contains("MarshalingBehavior(Agile)]\n            interface IFabric :"));
     }
 }

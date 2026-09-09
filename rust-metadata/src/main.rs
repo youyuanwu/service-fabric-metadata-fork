@@ -58,10 +58,10 @@ fn main() {
     let out = repo.join("rust-metadata").join("target").join("gen");
     let headers = out.join("headers");
     let rdl_dir = out.join("rdl");
-    // Experiment output: keep it out of the committed .windows/ dir so it does
-    // not clobber the dotnet-generated baseline. Compare against
-    // .windows/winmd/Microsoft.ServiceFabric.winmd to evaluate parity.
-    let winmd_out = out.join("Microsoft.ServiceFabric.winmd");
+    let winmd_out = repo
+        .join(".windows")
+        .join("winmd")
+        .join("Microsoft.ServiceFabric.winmd");
     std::fs::create_dir_all(&headers).unwrap();
     std::fs::create_dir_all(&rdl_dir).unwrap();
     std::fs::create_dir_all(winmd_out.parent().unwrap()).unwrap();
@@ -77,6 +77,7 @@ fn main() {
         .collect();
 
     // 1. Provision the pinned libclang (cached after first download).
+    println!("provisioning pinned libclang (network access may be required)...");
     ensure_libclang();
     assert_libclang_version();
     println!("libclang: {}", clang_version().expect("libclang version"));
@@ -232,16 +233,8 @@ fn main() {
             // an enum, so tag them all as scoped.
             let rewritten = rewritten.replace("#[repr(i32)]", "#[repr(i32)] #[scoped]");
 
-            // Stamp every scraped interface with `MarshalingBehaviorAttribute(Agile)`
-            // so windows-bindgen emits `unsafe impl Send/Sync` for it (see the
-            // FabricAgile.rdl seed). Interfaces are always at 12-space indent under
-            // the three-level `mod Microsoft { mod ServiceFabric { mod FabricX {`
-            // nesting, immediately preceded by their `#[guid(..)]` line; inserting
-            // the attribute right before `interface ` stacks it with the guid.
-            let rewritten = rewritten.replace(
-                "\n            interface ",
-                "\n            #[Microsoft::ServiceFabric::Metadata::MarshalingBehavior(Agile)]\n            interface ",
-            );
+            // Preserve the retired generator's ^IFabric\w+$ agility scope.
+            let rewritten = add_agility_attributes(&rewritten);
 
             std::fs::write(&rdl_path, rewritten)
                 .unwrap_or_else(|e| panic!("write {} failed: {e}", rdl_path.display()));
@@ -302,6 +295,34 @@ fn main() {
     println!("wrote {}", winmd_out.display());
 }
 
+fn add_agility_attributes(input: &str) -> String {
+    const ATTRIBUTE: &str = "#[Microsoft::ServiceFabric::Metadata::MarshalingBehavior(Agile)]";
+
+    let mut output = String::with_capacity(input.len());
+    for line in input.split_inclusive('\n') {
+        let content = line.trim_end_matches(['\r', '\n']);
+        let trimmed = content.trim_start();
+        if let Some(declaration) = trimmed.strip_prefix("interface ") {
+            let name = declaration
+                .split(|character: char| !character.is_ascii_alphanumeric() && character != '_')
+                .next()
+                .unwrap_or_default();
+            if name.starts_with("IFabric")
+                && name
+                    .chars()
+                    .all(|character| character.is_ascii_alphanumeric() || character == '_')
+            {
+                let indent = &content[..content.len() - trimmed.len()];
+                output.push_str(indent);
+                output.push_str(ATTRIBUTE);
+                output.push_str(if line.ends_with("\r\n") { "\r\n" } else { "\n" });
+            }
+        }
+        output.push_str(line);
+    }
+    output
+}
+
 /// Materializes the flat Win32 metadata embedded by the published
 /// `windows-default` crate so windows-clang and windows-rdl can consume it as a
 /// normal file reference.
@@ -344,4 +365,27 @@ fn run_midl(midl: &Path, repo: &Path, dir: &str, idl: &str, headers: &Path) {
         .status()
         .unwrap_or_else(|e| panic!("failed to launch midl for {idl}: {e}"));
     assert!(status.success(), "midl failed for {idl}");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::add_agility_attributes;
+
+    #[test]
+    fn marks_only_ifabric_interfaces_as_agile() {
+        let input = concat!(
+            "            interface IFabricClient : IUnknown {\n",
+            "            interface IExtentLogicalLog : IUnknown {\n",
+            "            interface IFabric_Test : IUnknown {\n",
+        );
+
+        let output = add_agility_attributes(input);
+
+        assert_eq!(output.matches("MarshalingBehavior(Agile)").count(), 2);
+        assert!(output.contains("MarshalingBehavior(Agile)]\n            interface IFabricClient"));
+        assert!(output.contains("MarshalingBehavior(Agile)]\n            interface IFabric_Test"));
+        assert!(
+            !output.contains("MarshalingBehavior(Agile)]\n            interface IExtentLogicalLog")
+        );
+    }
 }

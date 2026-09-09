@@ -7,11 +7,8 @@ name = "sf-winmd-gen"
 version = "0.0.0"
 edition = "2024"
 publish = false
+default-run = "sf-winmd-gen"
 
-# Experimental tool: generate the Service Fabric winmd using the windows-rs
-# `windows-clang` / `windows-rdl` crates (Rust) instead of the dotnet
-# win32metadata (`Microsoft.Windows.WinmdGenerator`) toolchain.
-#
 # Keep these crates on the same release because they share metadata and RDL
 # contracts.
 [dependencies]

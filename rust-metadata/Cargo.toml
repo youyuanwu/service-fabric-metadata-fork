@@ -9,6 +9,10 @@ edition = "2024"
 publish = false
 default-run = "sf-winmd-gen"
 
+[[bin]]
+name = "validate_winmd"
+path = "src/validate_winmd.rs"
+
 # Keep these crates on the same release because they share metadata and RDL
 # contracts.
 [dependencies]

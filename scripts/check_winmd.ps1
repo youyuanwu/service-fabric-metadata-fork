@@ -6,9 +6,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$repoRoot = git rev-parse --show-toplevel 2>$null
-if (-not $repoRoot) {
-    Write-Error "Not in a git repository"
+$repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
+if (-not (Test-Path (Join-Path $repoRoot '.git'))) {
+    Write-Error "Repository root not found at $repoRoot"
     exit 1
 }
 Set-Location $repoRoot

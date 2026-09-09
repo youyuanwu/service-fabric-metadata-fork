@@ -95,8 +95,9 @@ pub fn compare(baseline: &Snapshot, candidate: &Snapshot) -> Vec<String> {
     }
 
     for (name, record) in &candidate.types {
-        let expected_agile =
-            is_ifabric(short_name(name)) && !OMITTED_DUPLICATES.contains(&short_name(name));
+        let expected_agile = record.category == "Interface"
+            && is_ifabric(short_name(name))
+            && !OMITTED_DUPLICATES.contains(&short_name(name));
         if record.agile != expected_agile {
             differences.push(format!(
                 "agility mismatch for {name}: expected {expected_agile}, found {}",
@@ -113,13 +114,13 @@ pub fn compare_migration(baseline: &Snapshot, candidate: &Snapshot) -> Vec<Strin
     let baseline_interfaces = baseline
         .types
         .iter()
-        .filter(|(name, _)| is_ifabric(short_name(name)))
+        .filter(|(name, record)| record.category == "Interface" && is_ifabric(short_name(name)))
         .filter(|(name, _)| !OMITTED_DUPLICATES.contains(&short_name(name)))
         .collect::<BTreeMap<_, _>>();
     let candidate_interfaces = candidate
         .types
         .iter()
-        .filter(|(name, _)| is_ifabric(short_name(name)))
+        .filter(|(name, record)| record.category == "Interface" && is_ifabric(short_name(name)))
         .collect::<BTreeMap<_, _>>();
 
     for (name, expected) in &baseline_interfaces {
@@ -303,12 +304,7 @@ fn canonical_type(ty: &Type) -> String {
 }
 
 fn canonical_type_name(name: &TypeName) -> String {
-    let qualified = match (name.namespace.as_str(), name.name.as_str()) {
-        ("Windows.Win32.Foundation", "FILETIME") | ("Windows.Win32", "FILETIME") => {
-            "Microsoft.ServiceFabric.FabricTypes.FILETIME".to_string()
-        }
-        _ => qualified_name(&name.namespace, &name.name),
-    };
+    let qualified = qualified_name(&name.namespace, &name.name);
 
     if name.generics.is_empty() {
         qualified
@@ -348,17 +344,17 @@ fn attribute_value<'a>(
 }
 
 fn has_agility<'a>(attributes: impl Iterator<Item = Attribute<'a>>) -> bool {
-    attributes
+    let markers = attributes
         .filter(|attribute| attribute.name() == "MarshalingBehaviorAttribute")
-        .filter(|attribute| {
+        .map(|attribute| {
             attribute.value().iter().any(|(_, value)| match value {
                 Value::I32(2) => true,
                 Value::EnumValue(_, inner) => matches!(inner.as_ref(), Value::I32(2)),
                 _ => false,
             })
         })
-        .count()
-        == 1
+        .collect::<Vec<_>>();
+    markers == [true]
 }
 
 fn describe_type_difference(
@@ -507,6 +503,15 @@ mod tests {
                 .iter()
                 .any(|difference| difference.contains("agility mismatch"))
         );
+    }
+
+    #[test]
+    fn migration_ignores_non_interface_ifabric_names() {
+        let mut class = record();
+        class.category = "Class".to_string();
+        class.agile = false;
+        let input = snapshot(&[("Microsoft.ServiceFabric.IFabricFactory", class)]);
+        assert!(compare_migration(&input, &input).is_empty());
     }
 
     #[test]

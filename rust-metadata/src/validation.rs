@@ -13,7 +13,6 @@ const OMITTED_DUPLICATES: [&str; 3] = [
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Snapshot {
     types: BTreeMap<String, TypeRecord>,
-    bytes: Vec<u8>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -61,7 +60,7 @@ struct ParameterRecord {
 }
 
 pub fn load(path: &Path) -> Result<Snapshot, String> {
-    let bytes = std::fs::read(path)
+    std::fs::metadata(path)
         .map_err(|error| format!("failed to read metadata from {}: {error}", path.display()))?;
     let index = Index::read(path)
         .ok_or_else(|| format!("failed to read metadata from {}", path.display()))?;
@@ -75,14 +74,11 @@ pub fn load(path: &Path) -> Result<Snapshot, String> {
         }
     }
 
-    Ok(Snapshot { types, bytes })
+    Ok(Snapshot { types })
 }
 
 pub fn compare(baseline: &Snapshot, candidate: &Snapshot) -> Vec<String> {
     let mut differences = Vec::new();
-    if baseline.bytes != candidate.bytes {
-        differences.push("metadata bytes changed".to_string());
-    }
 
     for (name, expected) in &baseline.types {
         let Some(actual) = candidate.types.get(name) else {
@@ -460,7 +456,6 @@ mod tests {
                 .iter()
                 .map(|(name, record)| ((*name).to_string(), record.clone()))
                 .collect(),
-            bytes: Vec::new(),
         }
     }
 
@@ -643,5 +638,61 @@ mod tests {
         let mut changed = baseline_record;
         changed.guid = Some("different".to_string());
         assert!(compare(&baseline, &snapshot(&[(name, changed)]))[0].contains("GUID changed"));
+    }
+
+    #[test]
+    fn strict_comparison_checks_field_method_and_parameter_details() {
+        let name = "Microsoft.ServiceFabric.IFabricClient";
+        let mut baseline_record = record();
+        baseline_record.fields.push(FieldRecord {
+            name: "Value".to_string(),
+            ty: "u32".to_string(),
+            flags: 1,
+            constant: Some("I32(1)".to_string()),
+            attributes: vec!["Test.Field=[]".to_string()],
+        });
+        baseline_record.methods.push(MethodRecord {
+            name: "Call".to_string(),
+            flags: 1,
+            impl_flags: 2,
+            calling_convention: "system".to_string(),
+            signature: "32(u32)->i32".to_string(),
+            parameters: vec![ParameterRecord {
+                flags: 1,
+                direction: "Input".to_string(),
+                optional: false,
+                retval: false,
+                attributes: vec!["Test.Param=[]".to_string()],
+            }],
+            return_parameter: Some(ParameterRecord {
+                flags: 2,
+                direction: "Output".to_string(),
+                optional: false,
+                retval: true,
+                attributes: Vec::new(),
+            }),
+            attributes: vec!["Test.Method=[]".to_string()],
+        });
+        let baseline = snapshot(&[(name, baseline_record.clone())]);
+
+        let mut changed = baseline_record.clone();
+        changed.fields[0].ty = "u64".to_string();
+        assert!(compare(&baseline, &snapshot(&[(name, changed)]))[0].contains("fields changed"));
+
+        let mut changed = baseline_record.clone();
+        changed.fields[0].constant = Some("I32(2)".to_string());
+        assert!(compare(&baseline, &snapshot(&[(name, changed)]))[0].contains("fields changed"));
+
+        let mut changed = baseline_record.clone();
+        changed.methods[0].signature = "32(u64)->i32".to_string();
+        assert!(compare(&baseline, &snapshot(&[(name, changed)]))[0].contains("methods changed"));
+
+        let mut changed = baseline_record.clone();
+        changed.methods[0].parameters[0].direction = "Output".to_string();
+        assert!(compare(&baseline, &snapshot(&[(name, changed)]))[0].contains("methods changed"));
+
+        let mut changed = baseline_record;
+        changed.methods[0].return_parameter.as_mut().unwrap().retval = false;
+        assert!(compare(&baseline, &snapshot(&[(name, changed)]))[0].contains("methods changed"));
     }
 }

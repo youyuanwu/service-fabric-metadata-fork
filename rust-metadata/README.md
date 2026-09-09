@@ -20,11 +20,11 @@ metadata embedded in the release.
    corresponding header into per-namespace `.rdl`, using previously built
    partition winmds plus the flat `Windows.Win32.winmd` shipped by windows-rs as
    cross-namespace references so type names are emitted namespace-qualified.
-4. Compiles all `.rdl` into `target/gen/Microsoft.ServiceFabric.winmd` via the
-   `windows-rdl` reader.
+4. Compiles all `.rdl` into `.windows/winmd/Microsoft.ServiceFabric.winmd` via
+   the `windows-rdl` reader.
 
-Output goes to `target/gen/` and does **not** overwrite the committed dotnet
-baseline in `.windows/winmd/`, so the two can be compared.
+Intermediate files remain under `target/gen/`; the final output is written
+directly to the repository's committed `.windows/winmd/` location.
 
 ## Run
 
@@ -81,4 +81,3 @@ and the matching new `windows`/`windows-bindgen` consumer. Adopting it therefore
 also means migrating the consumer (service-fabric-rs) to the new `windows` crate
 and replacing any reliance on `[Agile]`-derived `Send` with `AgileReference<T>`
 where cross-thread access is needed.
-

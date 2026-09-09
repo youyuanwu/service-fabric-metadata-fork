@@ -13,6 +13,9 @@ jobs:
 
     - uses: actions/checkout@v5
 
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+
     - name: Get MSVC
       uses: ilammy/msvc-dev-cmd@v1
 
@@ -23,20 +26,6 @@ jobs:
       run: |
         Get-ItemPropertyValue 'HKLM:\SOFTWARE\Microsoft\Service Fabric\' -Name FabricVersion
       shell: pwsh
-
-    # winmd generate
-    - name: setup dotnet
-      uses: actions/setup-dotnet@v3
-      with:
-        dotnet-version: 
-          8.0.x
-
-    # TODO: newer tool requires dotnet 10.
-    - name: install ClangSharpPInvokeGenerator
-      run: dotnet tool install --global ClangSharpPInvokeGenerator --version 17.0.1
-
-    - name: restore winmd generator nuget
-      run: dotnet restore .metadata\generate.proj
 
     - name: run cmake
       run: > 

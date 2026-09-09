@@ -4,8 +4,8 @@ use std::process::Command;
 use windows_clang::*;
 
 /// A metadata partition: one winmd namespace produced from one MIDL-generated
-/// header. Mirrors `.metadata/Partitions/<Name>/{settings.rsp,main.cpp}` in the
-/// dotnet flow (`--namespace` + `--traverse <IncludeRoot>/<header>`).
+/// header. The namespace and traversal header are explicit here so the
+/// generation pipeline has one source of partition configuration.
 struct Partition {
     /// Winmd namespace, e.g. `Microsoft.ServiceFabric.FabricClient`.
     namespace: &'static str,
@@ -87,7 +87,7 @@ fn main() {
     // This MUST be the flat Windows.Win32.winmd that windows-rs ships: the RDL
     // reader hardcodes the pseudo-attribute namespace to `Windows.Win32.Metadata`
     // (e.g. NativeEncodingAttribute), which only exists in that flat layout. The
-    // dotnet-era win32metadata winmd puts those types in
+    // The former package-sourced Win32 metadata puts those types in
     // `Windows.Win32.Foundation.Metadata`, so it cannot be used as the reference
     // here. Consequence: the generated SF winmd is tied to the new flat Win32
     // layout (and the matching new windows-bindgen consumer).
@@ -194,8 +194,8 @@ fn main() {
             );
 
             // windows-clang scrapes `const wchar_t*` typedefs (LPCWSTR, and
-            // FABRIC_URI which aliases it) as raw `*const u16`. The old dotnet
-            // win32metadata toolchain mapped these to PCWSTR, which the mssf
+            // FABRIC_URI which aliases it) as raw `*const u16`. The former
+            // generator mapped these to PCWSTR, which the mssf
             // string helpers (WString <-> PCWSTR) depend on. Re-point the LPCWSTR
             // alias at the Win32 PCWSTR builtin so the whole chain (LPCWSTR,
             // FABRIC_URI, and every struct field that uses them) projects as
@@ -205,7 +205,7 @@ fn main() {
                 "type LPCWSTR = Windows::Win32::PCWSTR;",
             );
 
-            // Restore FABRIC_URI as a distinct newtype. The old dotnet toolchain
+            // Restore FABRIC_URI as a distinct newtype. The former generator
             // emitted `pub struct FABRIC_URI(pub *mut u16)`, but the new
             // windows-bindgen bare-aliases any typedef whose underlying is a
             // pointer to a *non-void* type (`aliases_pointer`), so
@@ -220,7 +220,7 @@ fn main() {
 
             // windows-clang scrapes the SF header's `FABRIC_AAD_ClAIMS_RETRIEVAL_METADATA`
             // types with a lowercase `l` (a typo carried from the MIDL output). The
-            // dotnet win32metadata baseline exposes them as `...CLAIMS...`; normalize to
+            // previous committed baseline exposes them as `...CLAIMS...`; normalize to
             // that so consumers use the conventional spelling.
             let rewritten = rewritten.replace("FABRIC_AAD_ClAIMS", "FABRIC_AAD_CLAIMS");
 

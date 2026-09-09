@@ -12,6 +12,7 @@ $vswhere = if ($env:SF_METADATA_VSWHERE) {
 if (-not (Test-Path -LiteralPath $vswhere -PathType Leaf)) {
     throw "Visual Studio discovery tool not found at '$vswhere'. Install Visual Studio with C++ build tools, or set SF_METADATA_VSWHERE."
 }
+$env:PATH = "$(Split-Path -Parent $vswhere);$env:PATH"
 
 $vsPath = if ($env:SF_METADATA_VS_INSTALL_PATH) {
     $env:SF_METADATA_VS_INSTALL_PATH

@@ -1,207 +1,96 @@
-# Experiment: Generating the Service Fabric winmd with Rust (windows-rs)
+# Generating Service Fabric metadata with Rust
 
-Status: **experiment / proof of concept**. Tooling lives in
-[`../rust-metadata`](../rust-metadata); this document records the findings.
-
-## Goal
-
-The repository currently generates `Microsoft.ServiceFabric.winmd` with the
-dotnet `Microsoft.Windows.WinmdGenerator` (win32metadata) toolchain, driven from
-[`.metadata/generate.proj`](../.metadata/generate.proj). This experiment
-evaluates whether the new windows-rs Rust crates can generate the same winmd,
-following windows-rs issue
-[#4194](https://github.com/microsoft/windows-rs/issues/4194) and the
-`crates/tools/win32` + `crates/tools/package` examples.
-
-The relevant windows-rs crates are consumed from their published `0.100.0`
-releases on crates.io.
-
-## Crate publication status
-
-As of 2026-09-09, the complete windows-rs metadata toolchain is published on
-crates.io at `0.100.0`:
-
-| Crate | Version | Use in this experiment |
-|---|---|---|
-| `windows-clang` | 0.100.0 | C/C++ header to RDL scraping |
-| `windows-rdl` | 0.100.0 | RDL to winmd compilation |
-| `windows-metadata` | 0.100.0 | Shared ECMA-335 metadata model |
-| `windows-default` | 0.100.0 | Embedded flat Win32 reference metadata |
-| `windows-bindgen` | 0.100.0 | Downstream Rust bindings generation |
-| `windows-core` | 0.100.0 | Downstream COM and Windows runtime support |
-
-Git dependencies are no longer required. The migration from the pre-release git
-API required these mechanical changes:
-
-- `Clang::input_str(...)` became `Clang::input_text(...)`.
-- Header/RDL inputs and winmd references are now separate: use
-   `Clang::reference(...)` and `Reader::reference(...)` for winmd files.
-- Builder path arguments now take `AsRef<Path>` directly.
-- The matching flat Win32 reference is materialized from
-   `windows_default::WIN32`, removing the dependency on Cargo's git checkout
-   layout.
+`rust-metadata` is the repository's supported generator for
+`.windows/winmd/Microsoft.ServiceFabric.winmd`. It uses the published
+windows-rs metadata crates and does not require a separate managed SDK or
+package restore.
 
 ## Pipeline
 
-The Rust tool ([`rust-metadata/src/main.rs`](../rust-metadata/src/main.rs))
-reproduces the dotnet flow in four stages:
+1. `run.ps1` discovers Visual Studio and the Windows SDK, then enters an x64
+   developer environment.
+2. `windows-clang` provisions its pinned libclang release.
+3. The Windows SDK `midl.exe` compiles the Service Fabric IDL files into
+   headers.
+4. `windows-clang` scrapes five namespace partitions into RDL in dependency
+   order.
+5. `windows-rdl` compiles the partitions and seed definitions into the single,
+   self-contained `Microsoft.ServiceFabric.winmd`.
 
-1. **Provision libclang** — `windows_clang::ensure_libclang()` downloads and
-   caches a pinned libclang (18.1.1); no system LLVM required.
-2. **IDL → headers** — runs the Windows SDK `midl.exe` on the SF `.idl` files
-   (same step the dotnet flow performs internally).
-3. **Headers → per-namespace RDL** — for each partition (namespace), runs
-   `windows-clang` on the corresponding MIDL header, mirroring the
-   `.metadata/Partitions/<Name>/{settings.rsp,main.cpp}` `--namespace` /
-   `--traverse` inputs.
-4. **RDL → winmd** — compiles all partitions into a single winmd via the
-   `windows-rdl` reader.
+Intermediate headers, RDL, partition metadata, and the embedded flat Win32
+reference remain under `rust-metadata/target/gen`. Only the final Service
+Fabric metadata file is committed.
 
-`run.ps1` enters a Visual Studio Developer environment so `INCLUDE` is populated
-for both `midl` and clang.
+## Required transformations
 
-## Result
+The generator applies a small set of deterministic transformations after
+scraping:
 
-The pipeline succeeds end to end and produces a winmd essentially equivalent to
-the dotnet baseline:
+- Supplies the `FABRIC_STRING_PAIR` alias omitted by the header scraper.
+- Defines `FILETIME` in the Service Fabric namespace so the final metadata
+  remains single-rooted under `Microsoft`.
+- Preserves `PCWSTR` projection for wide-string aliases and keeps `FABRIC_URI`
+  as an ABI-compatible newtype.
+- Normalizes the `FABRIC_AAD_CLAIMS` spelling.
+- Marks C-style enums as scoped so binding generation preserves their newtype
+  representation.
+- Marks interfaces whose names match `IFabric\w+` with
+  `MarshalingBehaviorAttribute(Agile)` so binding generation retains the
+  expected thread-agility behavior. Non-matching interfaces are not marked.
 
-| | Rust output | dotnet baseline |
-|---|---|---|
-| winmd size | ~260 KB | ~254 KB |
-| `IFabric*` interfaces | 272 | 275 |
+The seed definitions are in `rust-metadata/seed/`.
 
-The only difference is three mangled duplicate artifacts
-(`IFabric…EventHandler0000/0001`) that **only the dotnet output** carries; the
-real interfaces are present in both. The Rust output is arguably cleaner.
+## Generate
 
-## Findings
+Prerequisites are a stable Rust toolchain, Visual Studio C++ build tools, and a
+Windows 10 or 11 SDK containing x64 `midl.exe`. The first run may download the
+pinned libclang component.
 
-### 1. Cross-namespace references need incremental reference winmds
+Use the standard CMake target:
 
-`windows-clang`'s public `write()` emits one namespace at a time. A bare
-cross-namespace reference (e.g. `FabricClient` using a `FabricTypes` struct)
-cannot be resolved by the RDL reader (`error: type not found`). The fix is to
-process partitions in dependency order and feed each already-built partition
-winmd back in as a reference, so clang emits namespace-qualified names.
-
-### 2. Win32 base types need a `Windows.Win32.winmd` reference
-
-SF types reference Win32 types such as `FILETIME`, `GUID`, `HRESULT`. These are
-supplied by referencing a `Windows.Win32.winmd` during both the clang scrape and
-the RDL compile. (`LPCWSTR`, `GUID` resolve as RDL builtins; structs like
-`FILETIME` do not.)
-
-### 3. The toolchain is locked to the new flat `Windows.Win32` layout
-
-This is the most consequential finding. The RDL reader **hardcodes** the
-pseudo-attribute namespace:
-
-```rust
-// windows-rs crates/libs/rdl/src/lib.rs
-pub(crate) const METADATA_NAMESPACE: &str = "Windows.Win32.Metadata";
+```pwsh
+cmake . -B build -T host=x64 -A x64
+cmake --build build --target generate_winmd
 ```
 
-Pseudo-attributes such as `#[encoding("utf-16")]` are resolved to
-`Windows.Win32.Metadata.NativeEncodingAttribute`. That type only exists in the
-flat `Windows.Win32.winmd` that windows-rs ships. The dotnet-era win32metadata
-winmd places the same types under `Windows.Win32.Foundation.Metadata`, so using
-it as the reference fails with `error: pseudo-attribute type not found`.
+Or run the generator directly:
 
-**Consequence:** a Rust-generated SF winmd must reference the flat windows-rs
-`Windows.Win32.winmd`, and its external references land in the flat
-`Windows.Win32.*` namespaces (e.g. `Windows.Win32.FILETIME`) rather than the
-dotnet layout (`Windows.Win32.Foundation.FILETIME`). It is therefore **not a
-byte-for-byte drop-in**; it is tied to the new windows-rs Win32 layout and the
-matching new `windows` / `windows-bindgen` consumer.
-
-### 4. A dropped MIDL struct alias
-
-`windows-clang` drops the MIDL struct alias
-`typedef struct FABRIC_APPLICATION_PARAMETER FABRIC_STRING_PAIR;` while still
-emitting references to it, leaving a dangling reference. (dotnet win32metadata
-instead rewrites references to the underlying struct and emits no
-`FABRIC_STRING_PAIR`.) It is the only such alias in the codebase and is
-re-supplied by a one-line seed,
-[`rust-metadata/seed/FabricTypes.rdl`](../rust-metadata/seed/FabricTypes.rdl).
-
-## The `[Agile]` attribute
-
-The dotnet flow tags every `IFabric*` interface with `[Agile]` via
-[`.metadata/emitter.settings.rsp`](../.metadata/emitter.settings.rsp)
-(`--memberRemap ^IFabric\w+$=[Agile]`). The *older* `windows` crate read that
-`AgileAttribute` to emit `unsafe impl Send`/`Sync` on the interface, which is why
-the SF Rust bindings could be moved across threads.
-
-### Not reproducible with the stock toolchain
-
-- RDL recognizes only a fixed attribute set (`const, encoding, flags, guid,
-  library, retval, static, win32`) — no generic custom attribute and no `agile`
-  pseudo-attribute.
-- The flat `Windows.Win32.winmd` does not even define `AgileAttribute`.
-
-Emitting it would require patching `windows-rdl` (a new pseudo-attribute plus the
-attribute type) and `windows-clang` (an `IFabric*` member remap).
-
-### The new bindgen ignores `AgileAttribute`
-
-`windows-bindgen` still generates `unsafe impl Send`/`Sync`, gated on
-`TypeDef::is_agile()` (`interface.rs`, `class.rs`, `cpp_interface.rs`). What
-changed is the **source** of agility:
-
-| Attribute | Before | Current |
-|---|---|---|
-| `AgileAttribute` (win32metadata marker, used by SF) | agile → `Send`/`Sync` | **ignored** |
-| `MarshalingBehaviorAttribute == 2` (WinRT) | agile | agile |
-| async types | agile | agile |
-
-The `AgileAttribute` branch was removed from `is_agile()` in
-**PR [#4689](https://github.com/microsoft/windows-rs/pull/4689)**
-(commit `c669bdff6`, *"Generate `windows`/`windows-sys` from in-house metadata
-directly from the Windows SDK"*):
-
-```rust
- fn is_agile(&self) -> bool {
-     for attribute in self.attributes() {
--        match attribute.name() {
--            "AgileAttribute" => return true,
--            "MarshalingBehaviorAttribute" => { /* value == 2 */ return true }
--            _ => {}
--        }
-+        if attribute.name() == "MarshalingBehaviorAttribute"
-+            && /* value == 2 */ { return true; }
-     }
-     self.is_async()
- }
+```pwsh
+pwsh -File rust-metadata/run.ps1
 ```
 
-Related commits in the same series:
-[#4649](https://github.com/microsoft/windows-rs/pull/4649) (`windows-clang`
-in-house metadata generation) and
-[#4693](https://github.com/microsoft/windows-rs/pull/4693) (remove retired Win32
-metadata workarounds). The in-house `windows-clang` metadata no longer emits
-`AgileAttribute` (WinRT agility is carried by `MarshalingBehaviorAttribute`), so
-the bindgen branch for it became dead code and was dropped.
+Both commands write `.windows/winmd/Microsoft.ServiceFabric.winmd`.
 
-### Thread-agility in the new model
+## Validate
 
-With the new stack, `IFabric*` interface handles are `!Send`/`!Sync`. Moving a
-COM object across threads is done explicitly with `AgileReference<T>` (backed by
-`IAgileObject` / `RoGetAgileReference`) rather than relying on the interface
-being `Send` because of a metadata flag.
+```pwsh
+cmake --build build --target validate_winmd
+```
 
-## Recommendation
+Validation uses `windows-metadata` to compare the regenerated artifact with the
+committed Rust-generated baseline. It compares type sets, type flags,
+inheritance, implemented interfaces, class layout, fields, constants, method
+signatures and parameter metadata, GUIDs, and custom attributes. This avoids a
+dependency on `ildasm` and ignores container details that are not part of the
+typed metadata model.
 
-Generating the SF winmd with Rust is viable and produces near-identical
-interface coverage, but it is not a byte-for-byte replacement: it binds the
-winmd (and the consumer) to the new flat `Windows.Win32` layout and the new
-`windows` / `windows-bindgen` toolchain. Adopting it means:
+The migration was also checked once against the retired baseline. All 272 real
+`IFabric*` interfaces retained their names, GUIDs, and ordered method names.
+Three duplicate mangled artifacts that did not represent distinct APIs were
+intentionally omitted:
 
-1. Regenerate `Microsoft.ServiceFabric.winmd` with the Rust tool (referencing the
-   flat windows-rs `Windows.Win32.winmd`).
-2. Migrate the consumer (service-fabric-rs) to the new `windows` crate.
-3. Replace any reliance on `[Agile]`-derived `Send` with explicit
-   `AgileReference<T>` where cross-thread access is required.
+- `IFabricClientConnectionEventHandler0000`
+- `IFabricClientConnectionEventHandler0001`
+- `IFabricServiceNotificationEventHandler0000`
 
-If staying on the current win32metadata + older `windows` crate consumer is a
-requirement, the stock windows-rs RDL toolchain cannot target that layout without
-patching the crates, and the `[Agile]` marker cannot be emitted.
+## Troubleshooting
+
+- **Visual Studio discovery fails**: install Visual Studio C++ build tools, or
+  set `SF_METADATA_VSWHERE` / `SF_METADATA_VS_INSTALL_PATH`.
+- **`midl.exe` is missing**: install a Windows 10 or 11 SDK, or set
+  `SF_METADATA_WINDOWS_KITS_BIN`.
+- **libclang provisioning fails**: verify network access on the first run; the
+  provisioned component is cached for later runs.
+- **Validation reports differences**: regenerate intentionally, inspect the
+  typed difference report, and commit the updated winmd only when the metadata
+  change is expected.

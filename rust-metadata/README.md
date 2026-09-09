@@ -21,8 +21,9 @@ distributed with the final artifact.
 
 ## Run
 
-Requires a stable Rust toolchain, Visual Studio C++ build tools, and a Windows
-10 or 11 SDK:
+Requires a stable Rust toolchain, Visual Studio C++ build tools, a Windows 10
+or 11 SDK, and PowerShell 7 (`pwsh`). The repository's standard CMake workflow
+also requires CMake:
 
 ```pwsh
 pwsh -File rust-metadata/run.ps1

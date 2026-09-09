@@ -42,9 +42,9 @@ The seed definitions are in `rust-metadata/seed/`.
 
 ## Generate
 
-Prerequisites are a stable Rust toolchain, Visual Studio C++ build tools, and a
-Windows 10 or 11 SDK containing x64 `midl.exe`. The first run may download the
-pinned libclang component.
+Prerequisites are a stable Rust toolchain, Visual Studio C++ build tools, a
+Windows 10 or 11 SDK containing x64 `midl.exe`, PowerShell 7 (`pwsh`), and
+CMake. The first run may download the pinned libclang component.
 
 Use the standard CMake target:
 
@@ -74,10 +74,11 @@ signatures and parameter metadata, GUIDs, and custom attributes. This avoids a
 dependency on `ildasm` and ignores container details that are not part of the
 typed metadata model.
 
-The migration was also checked once against the retired baseline. All 272 real
-`IFabric*` interfaces retained their names, GUIDs, and ordered method names.
-Three duplicate mangled artifacts that did not represent distinct APIs were
-intentionally omitted:
+The migration was also checked once against the retired baseline: the previous
+artifact contained 1,263 types and the Rust artifact contains 1,280 types. All
+272 real `IFabric*` interfaces retained their names, GUIDs, and ordered method
+names. Three duplicate mangled artifacts that did not represent distinct APIs
+were intentionally omitted:
 
 - `IFabricClientConnectionEventHandler0000`
 - `IFabricClientConnectionEventHandler0001`

@@ -5,6 +5,7 @@
 - Rust stable toolchain
 - Visual Studio with the C++ build tools workload
 - A Windows 10 or 11 SDK containing the x64 `midl.exe`
+- PowerShell 7 (`pwsh`) and CMake
 
 The generator provisions its pinned libclang release on first use, so the first
 run requires network access.

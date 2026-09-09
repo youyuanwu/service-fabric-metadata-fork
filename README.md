@@ -13,6 +13,7 @@ Currently the public idl version used is SF 11.1.
 The use of this repo as a dependency does not require these dependencies.
 * Rust stable toolchain
 * Visual Studio C++ build tools and a Windows 10 or 11 SDK (for `midl.exe`)
+* PowerShell 7 (`pwsh`) and CMake
 
 Generate and validate the committed metadata:
 

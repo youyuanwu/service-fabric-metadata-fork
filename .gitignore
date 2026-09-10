@@ -5,3 +5,4 @@ obj
 # Cargo workspace output
 /target/
 .vscode
+.paw

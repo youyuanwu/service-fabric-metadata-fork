@@ -96,8 +96,8 @@ fn main() {
     let winmd_dir = out.join("winmd");
     recreate_dir(&winmd_dir);
 
-    let mut rdl_paths: Vec<String> = Vec::new();
-    let mut built_winmds: Vec<String> = Vec::new();
+    let mut rdl_paths: Vec<PathBuf> = Vec::new();
+    let mut built_winmds: Vec<PathBuf> = Vec::new();
     let mut routes = std::collections::HashMap::<String, String>::new();
 
     // Self-contained seed defining `MarshalingBehaviorAttribute` +
@@ -108,9 +108,7 @@ fn main() {
     let agile_seed = repo
         .join("rust-metadata")
         .join("seed")
-        .join("FabricAgile.rdl")
-        .to_string_lossy()
-        .replace('\\', "/");
+        .join("FabricAgile.rdl");
 
     for header in PARTITIONS {
         let partition_rdl_dir = rdl_dir.join(header);
@@ -190,7 +188,7 @@ fn main() {
             .write()
             .unwrap_or_else(|e| panic!("winmd compile of {header} failed: {e}"));
 
-        rdl_paths.push(rdl_path.to_string_lossy().replace('\\', "/"));
+        rdl_paths.push(rdl_path.clone());
         let target_namespace = format!("{OUTPUT_ROOT}.{header}");
         for name in windows_rdl::item_names(&rdl_path, SCRAPE_NAMESPACE)
             .unwrap_or_else(|e| panic!("read routes from {} failed: {e}", rdl_path.display()))
@@ -205,7 +203,7 @@ fn main() {
         if *header == "FabricTypes" {
             rdl_paths.push(agile_seed.clone());
         }
-        built_winmds.push(part_winmd.to_string_lossy().replace('\\', "/"));
+        built_winmds.push(part_winmd);
     }
 
     // 4. Compile the flat RDL partitions, then structurally remap each owned

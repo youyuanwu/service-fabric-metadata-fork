@@ -42,10 +42,54 @@ fn uses_windows_root_and_external_filetime() {
             ))
     );
     assert!(index.types().all(|definition| {
-        !definition
+        definition
             .namespace()
-            .starts_with("Microsoft.ServiceFabric")
+            .starts_with("Windows.ServiceFabric.")
     }));
+    for namespace in [
+        "FabricTypes",
+        "FabricCommon",
+        "FabricClient",
+        "FabricRuntime",
+        "FabricTransport",
+        "Metadata",
+    ] {
+        assert!(index.contains_namespace(&format!("Windows.ServiceFabric.{namespace}")));
+    }
+}
+
+#[test]
+fn uses_canonical_string_aliases_and_preserves_record_aliases() {
+    let index = windows_metadata::reader::Index::read(committed_winmd()).unwrap();
+
+    assert!(!index.contains("Windows.ServiceFabric.FabricTypes", "LPCWSTR"));
+    let uri = index.expect("Windows.ServiceFabric.FabricTypes", "FABRIC_URI");
+    assert!(matches!(
+        uri.underlying_type(),
+        Some(Type::ValueName(name))
+            if name.namespace == "Windows.Win32" && name.name == "PCWSTR"
+    ));
+
+    let pair = index.expect("Windows.ServiceFabric.FabricTypes", "FABRIC_STRING_PAIR");
+    assert!(matches!(
+        pair.underlying_type(),
+        Some(Type::ValueName(name))
+            if name.namespace == "Windows.ServiceFabric.FabricTypes"
+                && name.name == "FABRIC_APPLICATION_PARAMETER"
+    ));
+}
+
+#[test]
+fn preserves_idl_type_spelling() {
+    let index = windows_metadata::reader::Index::read(committed_winmd()).unwrap();
+    assert!(index.contains(
+        "Windows.ServiceFabric.FabricTypes",
+        "FABRIC_AAD_ClAIMS_RETRIEVAL_METADATA"
+    ));
+    assert!(!index.contains(
+        "Windows.ServiceFabric.FabricTypes",
+        "FABRIC_AAD_CLAIMS_RETRIEVAL_METADATA"
+    ));
 }
 
 #[test]

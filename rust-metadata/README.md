@@ -12,10 +12,13 @@ direct references to types such as `Windows.Win32.FILETIME`.
 1. Provision the pinned libclang release.
 2. Compile Service Fabric IDL files into headers with the Windows SDK
    `midl.exe`.
-3. Scrape the five namespace partitions into RDL in dependency order.
-4. Apply the Service Fabric alias, type-projection, enum, and agility
-   transformations in `src/main.rs` and `seed/`.
-5. Compile the combined RDL directly to
+3. Scrape the five headers into flat RDL partitions using windows-rs's
+   per-header canonicalization.
+4. Compile the flat metadata and structurally remap each partition into its
+   `Windows.ServiceFabric.*` namespace.
+5. Apply the Service Fabric-specific enum and agility metadata in `src/main.rs`
+   and `seed/FabricAgile.rdl`.
+6. Write the remapped metadata directly to
    `.windows/winmd/Windows.ServiceFabric.winmd`.
 
 Intermediates are written under `target/gen/`. The embedded

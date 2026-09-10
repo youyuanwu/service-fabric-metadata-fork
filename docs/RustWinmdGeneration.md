@@ -16,10 +16,13 @@ Service Fabric types are emitted under `Windows.ServiceFabric.*`. Sharing the
 2. `windows-clang` provisions its pinned libclang release.
 3. The Windows SDK `midl.exe` compiles the Service Fabric IDL files into
    headers.
-4. `windows-clang` scrapes five namespace partitions into RDL in dependency
-   order.
-5. `windows-rdl` compiles the partitions and seed definitions into the single,
-   self-contained `Windows.ServiceFabric.winmd`.
+4. `windows-clang` uses its SDK-style per-header mode to scrape five flat RDL
+   partitions in dependency order.
+5. `windows-rdl` compiles the flat partitions, then `windows-metadata`
+   structurally remaps each header's owned items into
+   `Windows.ServiceFabric.<Partition>`.
+6. The remapped definitions and external `Windows.Win32` references are written
+   to the single `Windows.ServiceFabric.winmd`.
 
 Intermediate headers, RDL, partition metadata, and the embedded flat Win32
 reference remain under `rust-metadata/target/gen`. Only the final Service
@@ -27,23 +30,32 @@ Fabric metadata file is committed.
 
 ## Required transformations
 
-The generator applies a small set of deterministic transformations after
-scraping:
+Per-header scraping applies the same structural canonicalization used to build
+the base windows-rs Win32 metadata:
 
-- Supplies the `FABRIC_STRING_PAIR` alias omitted by the header scraper.
+- Canonicalizes `LPCWSTR` references to `Windows.Win32.PCWSTR` and suppresses
+  the redundant local alias.
+- Preserves `FABRIC_STRING_PAIR` automatically as a secondary record alias of
+  `FABRIC_APPLICATION_PARAMETER`.
+- Emits `FABRIC_URI` as its source-defined transparent alias of `PCWSTR`,
+  rather than manufacturing a distinct handle-like newtype.
+- Preserves source IDL spellings, including
+  `FABRIC_AAD_ClAIMS_RETRIEVAL_METADATA`, rather than applying name-specific
+  corrections after scraping.
 - Keeps `FILETIME` as `Windows.Win32.FILETIME`; Service Fabric metadata also
   uses the `Windows` root, so the final metadata remains single-rooted without
   a local duplicate definition.
-- Preserves `PCWSTR` projection for wide-string aliases and keeps `FABRIC_URI`
-  as an ABI-compatible newtype.
-- Normalizes the `FABRIC_AAD_CLAIMS` spelling.
+
+The generator performs only the Service Fabric-specific metadata additions
+after scraping:
+
 - Marks C-style enums as scoped so binding generation preserves their newtype
   representation.
 - Marks interfaces whose names match `IFabric\w+` with
   `MarshalingBehaviorAttribute(Agile)` so binding generation retains the
   expected thread-agility behavior. Non-matching interfaces are not marked.
 
-The seed definitions are in `rust-metadata/seed/`.
+The agility marker definitions are in `rust-metadata/seed/FabricAgile.rdl`.
 
 ## Generate
 
@@ -81,7 +93,7 @@ typed metadata model.
 
 The initial Rust migration was checked once against the retired baseline: the
 previous artifact contained 1,263 types and the Windows-rooted Rust artifact
-contains 1,279 types. All 272 real `IFabric*` interfaces retained their short
+contains 1,278 types. All 272 real `IFabric*` interfaces retained their short
 names, GUIDs, and ordered method names. Three duplicate mangled artifacts that
 did not represent distinct APIs were intentionally omitted:
 

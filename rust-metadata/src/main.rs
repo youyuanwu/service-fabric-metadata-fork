@@ -3,49 +3,28 @@ use std::process::Command;
 
 use windows_clang::*;
 
-/// A metadata partition: one winmd namespace produced from one MIDL-generated
-/// header. The namespace and traversal header are explicit here so the
-/// generation pipeline has one source of partition configuration.
-struct Partition {
-    /// Winmd namespace, e.g. `Windows.ServiceFabric.FabricClient`.
-    namespace: &'static str,
-    /// The MIDL-generated header (stem, no extension) that defines this
-    /// partition's types, e.g. `FabricClient`.
-    header: &'static str,
-}
+const SCRAPE_NAMESPACE: &str = "Windows.Win32";
+const OUTPUT_ROOT: &str = "Windows.ServiceFabric";
 
-const PARTITIONS: &[Partition] = &[
-    Partition {
-        namespace: "Windows.ServiceFabric.FabricTypes",
-        header: "FabricTypes",
-    },
-    Partition {
-        namespace: "Windows.ServiceFabric.FabricCommon",
-        header: "FabricCommon",
-    },
-    Partition {
-        namespace: "Windows.ServiceFabric.FabricClient",
-        header: "FabricClient",
-    },
-    Partition {
-        namespace: "Windows.ServiceFabric.FabricRuntime",
-        header: "FabricRuntime",
-    },
-    Partition {
-        namespace: "Windows.ServiceFabric.FabricTransport",
-        header: "fabrictransport_",
-    },
+/// MIDL-generated header stems in dependency order. Per-header scraping appends
+/// each stem to `OUTPUT_ROOT` to form the final metadata namespace.
+const PARTITIONS: &[&str] = &[
+    "FabricTypes",
+    "FabricCommon",
+    "FabricClient",
+    "FabricRuntime",
+    "FabricTransport",
 ];
 
 /// The `.idl` files to compile, resolved relative to the repository root.
 /// Order matters for MIDL only in that imports must be resolvable via `/I`;
 /// every file is compiled independently.
-const IDLS: &[(&str, &str)] = &[
-    ("idl", "FabricTypes.idl"),
-    ("idl", "FabricCommon.idl"),
-    ("idl", "FabricClient.idl"),
-    ("idl", "FabricRuntime.idl"),
-    ("internal_idl", "fabrictransport_.idl"),
+const IDLS: &[(&str, &str, &str)] = &[
+    ("idl", "FabricTypes.idl", "FabricTypes.h"),
+    ("idl", "FabricCommon.idl", "FabricCommon.h"),
+    ("idl", "FabricClient.idl", "FabricClient.h"),
+    ("idl", "FabricRuntime.idl", "FabricRuntime.h"),
+    ("internal_idl", "fabrictransport_.idl", "FabricTransport.h"),
 ];
 
 fn main() {
@@ -62,8 +41,8 @@ fn main() {
         .join(".windows")
         .join("winmd")
         .join("Windows.ServiceFabric.winmd");
-    std::fs::create_dir_all(&headers).unwrap();
-    std::fs::create_dir_all(&rdl_dir).unwrap();
+    recreate_dir(&headers);
+    recreate_dir(&rdl_dir);
     std::fs::create_dir_all(winmd_out.parent().unwrap()).unwrap();
 
     // The VS Developer environment must be active so `INCLUDE` points at the
@@ -97,20 +76,16 @@ fn main() {
     // 2. IDL -> C/C++ headers via MIDL.
     let midl = find_midl();
     println!("midl: {}", midl.display());
-    for (dir, idl) in IDLS {
-        run_midl(&midl, &repo, dir, idl, &headers);
+    for (dir, idl, header) in IDLS {
+        run_midl(&midl, &repo, dir, idl, header, &headers);
     }
 
-    // 3. Each partition header -> per-namespace RDL via windows-clang.
+    // 3. Each partition header -> per-header RDL via windows-clang.
     //
     // The partitions are processed in dependency order (Types, Common first).
-    // Cross-namespace type references (e.g. FabricClient using a FabricTypes
-    // struct) can only be emitted *namespace-qualified* if clang is given a
-    // reference winmd that already owns those types. So each partition is
-    // compiled to an intermediate winmd as we go, and every subsequent
-    // partition is scraped and compiled with all previously-built winmds as
-    // references. Without this the RDL reader fails with "type not found" on
-    // the bare cross-namespace name.
+    // Each partition is compiled to an intermediate flat winmd and supplied as
+    // a reference to later scrapes. This excludes already-owned definitions
+    // while keeping their bare names resolvable in the shared flat namespace.
     let mut include_args: Vec<String> = Vec::new();
     for dir in &include_dirs {
         include_args.push("-isystem".to_string());
@@ -118,19 +93,11 @@ fn main() {
     }
     let headers_arg = format!("-I{}", headers.display());
     let winmd_dir = out.join("winmd");
-    std::fs::create_dir_all(&winmd_dir).unwrap();
+    recreate_dir(&winmd_dir);
 
     let mut rdl_paths: Vec<String> = Vec::new();
     let mut built_winmds: Vec<String> = Vec::new();
-
-    // Seed RDL supplying the MIDL struct alias windows-clang drops (see the file
-    // for details). It belongs to the FabricTypes namespace.
-    let seed = repo
-        .join("rust-metadata")
-        .join("seed")
-        .join("FabricTypes.rdl")
-        .to_string_lossy()
-        .replace('\\', "/");
+    let mut routes = std::collections::HashMap::<String, String>::new();
 
     // Self-contained seed defining `MarshalingBehaviorAttribute` +
     // `MarshalingType` (under Windows.ServiceFabric.Metadata). The post-scrape
@@ -144,64 +111,47 @@ fn main() {
         .to_string_lossy()
         .replace('\\', "/");
 
-    for p in PARTITIONS {
-        let rdl_path = rdl_dir.join(format!("{}.rdl", p.header));
-        let source = format!("#include <{}.h>", p.header);
+    for header in PARTITIONS {
+        let partition_rdl_dir = rdl_dir.join(header);
+        std::fs::create_dir_all(&partition_rdl_dir)
+            .unwrap_or_else(|e| panic!("create {} failed: {e}", partition_rdl_dir.display()));
+        let rdl_path = partition_rdl_dir.join(format!("{}.rdl", header.to_ascii_lowercase()));
         let mut clang = clang();
         clang
             .target("x86_64-pc-windows-msvc")
             .args(["-x", "c++"])
             .arg(&headers_arg)
             .args(&include_args)
-            .namespace(p.namespace)
-            .filter(&format!("{}.h", p.header))
-            .input_text(&source)
+            .namespace(SCRAPE_NAMESPACE)
+            .scope("headers")
+            .scope_header(&format!("{header}.h"))
+            .input(headers.join(format!("{header}.h")))
             .reference(&win32_winmd)
-            .output(&rdl_path);
-        // Already-built partitions act as the cross-namespace reference so
-        // clang emits qualified names for their types.
+            .output(&partition_rdl_dir);
+        // Already-built partitions exclude previously owned definitions while
+        // keeping their names available to later flat scrapes.
         for winmd in &built_winmds {
             clang.reference(winmd);
         }
-        println!("scraping {} -> {}", p.header, rdl_path.display());
+        println!("scraping {header} -> {}", rdl_path.display());
         clang
-            .write()
-            .unwrap_or_else(|e| panic!("clang scrape of {} failed: {e}", p.header));
+            .write_by_header()
+            .unwrap_or_else(|e| panic!("clang scrape of {header} failed: {e}"));
+
+        let emitted = std::fs::read_dir(&partition_rdl_dir)
+            .unwrap()
+            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+            .filter(|path| path.extension().is_some_and(|extension| extension == "rdl"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            emitted.as_slice(),
+            std::slice::from_ref(&rdl_path),
+            "expected one RDL partition for {header}"
+        );
 
         {
             let text = std::fs::read_to_string(&rdl_path)
                 .unwrap_or_else(|e| panic!("read {} failed: {e}", rdl_path.display()));
-
-            // windows-clang scrapes `const wchar_t*` typedefs (LPCWSTR, and
-            // FABRIC_URI which aliases it) as raw `*const u16`. The former
-            // generator mapped these to PCWSTR, which the mssf
-            // string helpers (WString <-> PCWSTR) depend on. Re-point the LPCWSTR
-            // alias at the Win32 PCWSTR builtin so the whole chain (LPCWSTR,
-            // FABRIC_URI, and every struct field that uses them) projects as
-            // `windows_core::PCWSTR` again.
-            let rewritten = text.replace(
-                "type LPCWSTR = *const u16;",
-                "type LPCWSTR = Windows::Win32::PCWSTR;",
-            );
-
-            // Restore FABRIC_URI as a distinct newtype. The former generator
-            // emitted `pub struct FABRIC_URI(pub *mut u16)`, but the new
-            // windows-bindgen bare-aliases any typedef whose underlying is a
-            // pointer to a *non-void* type (`aliases_pointer`), so
-            // `type FABRIC_URI = LPCWSTR` collapses to a transparent alias and is
-            // no longer constructible as `FABRIC_URI(..)`. A pointer to *void*
-            // keeps the newtype (like `HANDLE`/`HWND`), so re-point FABRIC_URI at
-            // `*mut void`: bindgen then emits `pub struct FABRIC_URI(pub *mut
-            // c_void)`. It is only ever passed by value into the vtable (no
-            // `Param<FABRIC_URI>` bound), so the void pointer is ABI-identical.
-            let rewritten =
-                rewritten.replace("type FABRIC_URI = LPCWSTR;", "type FABRIC_URI = *mut void;");
-
-            // windows-clang scrapes the SF header's `FABRIC_AAD_ClAIMS_RETRIEVAL_METADATA`
-            // types with a lowercase `l` (a typo carried from the MIDL output). The
-            // previous committed baseline exposes them as `...CLAIMS...`; normalize to
-            // that so consumers use the conventional spelling.
-            let rewritten = rewritten.replace("FABRIC_AAD_ClAIMS", "FABRIC_AAD_CLAIMS");
 
             // The new windows-bindgen projects unscoped (C-style) enums as a bare
             // `pub type X = i32` alias with plain integer constants, whereas the
@@ -210,7 +160,7 @@ fn main() {
             // `ScopedEnumAttribute` (RDL `#[scoped]`) makes bindgen keep the
             // newtype projection. Every `#[repr(i32)]` in the scraped RDL precedes
             // an enum, so tag them all as scoped.
-            let rewritten = rewritten.replace("#[repr(i32)]", "#[repr(i32)] #[scoped]");
+            let rewritten = text.replace("#[repr(i32)]", "#[repr(i32)] #[scoped]");
 
             // Preserve the retired generator's ^IFabric\w+$ agility scope.
             let rewritten = add_agility_attributes(&rewritten);
@@ -221,15 +171,11 @@ fn main() {
 
         // Compile this partition (plus its dependency winmds) into an
         // intermediate winmd that later partitions reference.
-        let part_winmd = winmd_dir.join(format!("{}.winmd", p.header));
+        let part_winmd = winmd_dir.join(format!("{header}.winmd"));
         let mut reader = windows_rdl::reader();
         reader.input(&rdl_path);
         reader.reference(&win32_winmd);
-        // The alias seed lives in the FabricTypes namespace; supply it when
-        // compiling that partition so its winmd (and every downstream
-        // reference) carries FABRIC_STRING_PAIR.
-        if p.header == "FabricTypes" {
-            reader.input(&seed);
+        if *header == "FabricTypes" {
             // Agile marker types (MarshalingBehaviorAttribute + MarshalingType).
             // Compiling them into FabricTypes.winmd lets every later partition
             // resolve the `#[MarshalingBehavior(Agile)]` stamped on its interfaces.
@@ -241,33 +187,58 @@ fn main() {
         reader
             .output(&part_winmd)
             .write()
-            .unwrap_or_else(|e| panic!("winmd compile of {} failed: {e}", p.header));
+            .unwrap_or_else(|e| panic!("winmd compile of {header} failed: {e}"));
 
         rdl_paths.push(rdl_path.to_string_lossy().replace('\\', "/"));
-        if p.header == "FabricTypes" {
-            rdl_paths.push(seed.clone());
+        let target_namespace = format!("{OUTPUT_ROOT}.{header}");
+        for name in windows_rdl::item_names(&rdl_path, SCRAPE_NAMESPACE)
+            .unwrap_or_else(|e| panic!("read routes from {} failed: {e}", rdl_path.display()))
+        {
+            if let Some(previous) = routes.insert(name.clone(), target_namespace.clone()) {
+                assert_eq!(
+                    previous, target_namespace,
+                    "item {name} is owned by multiple partitions"
+                );
+            }
+        }
+        if *header == "FabricTypes" {
             rdl_paths.push(agile_seed.clone());
         }
         built_winmds.push(part_winmd.to_string_lossy().replace('\\', "/"));
     }
 
-    // 4. Compile all RDL partitions together into the single combined winmd.
-    // Every RDL now carries qualified cross-namespace names, so all five
-    // namespaces resolve against each other with no external reference.
-    println!(
-        "compiling {} rdl partitions -> {}",
-        rdl_paths.len(),
-        winmd_out.display()
-    );
+    // 4. Compile the flat RDL partitions, then structurally remap each owned
+    // item to its header namespace. Unrouted Win32 references remain external.
+    println!("compiling {} flat RDL inputs", rdl_paths.len(),);
+    let flat_winmd = out.join("Windows.ServiceFabric.flat.winmd");
     let mut reader = windows_rdl::reader();
     reader.inputs(&rdl_paths);
     reader.reference(&win32_winmd);
     reader
-        .output(&winmd_out)
+        .output(&flat_winmd)
         .write()
         .unwrap_or_else(|e| panic!("winmd compile failed: {e}"));
 
+    println!("remapping flat metadata -> {}", winmd_out.display());
+    windows_metadata::remap()
+        .input(&flat_winmd)
+        .source(SCRAPE_NAMESPACE)
+        .fallback(SCRAPE_NAMESPACE)
+        .routes(routes)
+        .output(&winmd_out)
+        .remap()
+        .unwrap_or_else(|e| panic!("winmd remap failed: {e}"));
+
     println!("wrote {}", winmd_out.display());
+}
+
+fn recreate_dir(path: &Path) {
+    if path.exists() {
+        std::fs::remove_dir_all(path)
+            .unwrap_or_else(|e| panic!("clean {} failed: {e}", path.display()));
+    }
+    std::fs::create_dir_all(path)
+        .unwrap_or_else(|e| panic!("create {} failed: {e}", path.display()));
 }
 
 fn add_agility_attributes(input: &str) -> String {
@@ -336,7 +307,7 @@ fn find_midl() -> PathBuf {
 
 /// Runs MIDL to turn `<dir>/<idl>` into a header in `headers`, resolving imports
 /// from both SF idl directories and the SDK (`INCLUDE`).
-fn run_midl(midl: &Path, repo: &Path, dir: &str, idl: &str, headers: &Path) {
+fn run_midl(midl: &Path, repo: &Path, dir: &str, idl: &str, header: &str, headers: &Path) {
     let idl_path = repo.join(dir).join(idl);
     let status = Command::new(midl)
         .current_dir(repo)
@@ -347,6 +318,8 @@ fn run_midl(midl: &Path, repo: &Path, dir: &str, idl: &str, headers: &Path) {
         .arg(repo.join("internal_idl"))
         .arg("/out")
         .arg(headers)
+        .arg("/h")
+        .arg(header)
         .arg(&idl_path)
         .status()
         .unwrap_or_else(|e| panic!("failed to launch midl for {idl}: {e}"));

@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use sf_winmd_gen::validation;
+use sf_winmd_validation as validation;
 use windows_clang::*;
 
 const SCRAPE_NAMESPACE: &str = "Windows.Win32";
@@ -35,7 +35,7 @@ fn main() {
         .expect("crate has a parent directory")
         .to_path_buf();
 
-    let out = repo.join("rust-metadata").join("target").join("gen");
+    let out = repo.join("target").join("metadata-gen");
     let headers = out.join("headers");
     let rdl_dir = out.join("rdl");
     let winmd_out = repo

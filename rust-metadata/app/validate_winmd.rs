@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use sf_winmd_gen::validation;
+use sf_winmd_validation as validation;
 
 fn main() {
     let mut args = std::env::args_os().skip(1);

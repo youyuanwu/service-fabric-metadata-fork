@@ -29,7 +29,7 @@ Service Fabric types are emitted under `Windows.ServiceFabric.*`. Sharing the
    roundtrip and writes the single `Windows.ServiceFabric.winmd`.
 
 Intermediate headers, RDL, partition metadata, and the embedded flat Win32
-reference remain under `rust-metadata/target/gen`. Only the final Service
+reference remain under `target/metadata-gen`. Only the final Service
 Fabric metadata file is committed.
 
 ## Required transformations

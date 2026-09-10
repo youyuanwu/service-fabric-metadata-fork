@@ -24,7 +24,8 @@ direct references to types such as `Windows.Win32.FILETIME`.
 7. Write the remapped metadata directly to
    `.windows/winmd/Windows.ServiceFabric.winmd`.
 
-Intermediates are written under `target/gen/`. The embedded
+Intermediates are written under the repository-root `target/metadata-gen/`.
+The embedded
 `Windows.Win32.winmd` there is a generation-only reference and is not
 distributed with the final artifact.
 
@@ -50,7 +51,7 @@ pwsh -File scripts/check_winmd.ps1
 ```
 
 The validator reads both winmd files with `windows-metadata` and compares their
-typed structures. `cargo test --manifest-path rust-metadata/Cargo.toml --locked`
+typed structures. From the repository root, `cargo test --workspace --locked`
 runs the validator and generator tests.
 
 See [the detailed generation guide](../docs/RustWinmdGeneration.md) for design

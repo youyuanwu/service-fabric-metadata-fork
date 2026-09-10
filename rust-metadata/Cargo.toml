@@ -1,7 +1,3 @@
-# Standalone workspace so cargo does not walk up into the repo root looking for
-# a parent manifest; this crate builds in isolation.
-[workspace]
-
 [package]
 name = "sf-winmd-gen"
 version = "0.0.0"
@@ -20,7 +16,8 @@ path = "app/validate_winmd.rs"
 # Keep these crates on the same release because they share metadata and RDL
 # contracts.
 [dependencies]
-windows-clang = "0.100.0"
-windows-default = "0.100.0"
-windows-rdl = "0.100.0"
-windows-metadata = "0.100.0"
+sf-winmd-validation = { path = "validation" }
+windows-clang.workspace = true
+windows-default.workspace = true
+windows-metadata.workspace = true
+windows-rdl.workspace = true

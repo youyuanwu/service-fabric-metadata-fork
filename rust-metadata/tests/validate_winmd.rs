@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::process::Command;
 
-use sf_winmd_gen::validation;
+use sf_winmd_validation as validation;
 use windows_metadata::Type;
 
 fn committed_winmd() -> std::path::PathBuf {

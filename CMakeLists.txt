@@ -29,13 +29,15 @@ if(fabric_metadata_MAIN_PROJECT)
     ${CMAKE_CURRENT_SOURCE_DIR}/idl/*.idl
     ${CMAKE_CURRENT_SOURCE_DIR}/internal_idl/*.idl
     ${CMAKE_CURRENT_SOURCE_DIR}/rust-metadata/app/*.rs
-    ${CMAKE_CURRENT_SOURCE_DIR}/rust-metadata/src/*.rs
     ${CMAKE_CURRENT_SOURCE_DIR}/rust-metadata/seed/*.rdl
+    ${CMAKE_CURRENT_SOURCE_DIR}/rust-metadata/validation/src/*.rs
   )
   list(APPEND _metadata_inputs
+    ${CMAKE_CURRENT_SOURCE_DIR}/Cargo.toml
+    ${CMAKE_CURRENT_SOURCE_DIR}/Cargo.lock
     ${CMAKE_CURRENT_SOURCE_DIR}/rust-metadata/Cargo.toml
-    ${CMAKE_CURRENT_SOURCE_DIR}/rust-metadata/Cargo.lock
     ${CMAKE_CURRENT_SOURCE_DIR}/rust-metadata/run.ps1
+    ${CMAKE_CURRENT_SOURCE_DIR}/rust-metadata/validation/Cargo.toml
   )
 
   add_custom_command(
@@ -51,7 +53,7 @@ if(fabric_metadata_MAIN_PROJECT)
   )
 
   add_custom_target(force_clean
-    COMMAND ${CMAKE_COMMAND} -E rm -rf .windows rust-metadata/target
+    COMMAND ${CMAKE_COMMAND} -E rm -rf .windows target rust-metadata/target
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
   )
 

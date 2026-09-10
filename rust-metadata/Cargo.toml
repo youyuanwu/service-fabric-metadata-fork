@@ -10,8 +10,12 @@ publish = false
 default-run = "sf-winmd-gen"
 
 [[bin]]
+name = "sf-winmd-gen"
+path = "app/generate.rs"
+
+[[bin]]
 name = "validate_winmd"
-path = "src/validate_winmd.rs"
+path = "app/validate_winmd.rs"
 
 # Keep these crates on the same release because they share metadata and RDL
 # contracts.

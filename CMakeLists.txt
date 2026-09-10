@@ -28,6 +28,7 @@ if(fabric_metadata_MAIN_PROJECT)
   file(GLOB_RECURSE _metadata_inputs CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/idl/*.idl
     ${CMAKE_CURRENT_SOURCE_DIR}/internal_idl/*.idl
+    ${CMAKE_CURRENT_SOURCE_DIR}/rust-metadata/app/*.rs
     ${CMAKE_CURRENT_SOURCE_DIR}/rust-metadata/src/*.rs
     ${CMAKE_CURRENT_SOURCE_DIR}/rust-metadata/seed/*.rdl
   )

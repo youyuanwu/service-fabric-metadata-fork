@@ -18,7 +18,8 @@ direct references to types such as `Windows.Win32.FILETIME`.
    `Windows.ServiceFabric.*` namespace.
 5. Recompile the remapped metadata with the Win32 reference to preserve
    external assembly-resolution scopes.
-6. Apply the Service Fabric-specific enum and agility metadata in `src/main.rs`
+6. Apply the Service Fabric-specific enum and agility metadata in
+   `app/generate.rs`
    and `seed/FabricAgile.rdl`.
 7. Write the remapped metadata directly to
    `.windows/winmd/Windows.ServiceFabric.winmd`.

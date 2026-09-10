@@ -41,11 +41,11 @@ fn uses_windows_root_and_external_filetime() {
                     if name.namespace == "Windows.Win32" && name.name == "FILETIME"
             ))
     );
-    assert!(index.types().all(|definition| {
-        definition
-            .namespace()
-            .starts_with("Windows.ServiceFabric.")
-    }));
+    assert!(
+        index
+            .types()
+            .all(|definition| { definition.namespace().starts_with("Windows.ServiceFabric.") })
+    );
     for namespace in [
         "FabricTypes",
         "FabricCommon",

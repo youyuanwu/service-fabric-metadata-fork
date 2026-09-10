@@ -13,7 +13,7 @@ direct references to types such as `Windows.Win32.FILETIME`.
 2. Compile Service Fabric IDL files into headers with the Windows SDK
    `midl.exe`.
 3. Scrape the five namespace partitions into RDL in dependency order.
-4. Apply the Service Fabric alias-resolution, type-projection, enum, and agility
+4. Apply the Service Fabric alias, type-projection, enum, and agility
    transformations in `src/main.rs` and `seed/`.
 5. Compile the combined RDL directly to
    `.windows/winmd/Windows.ServiceFabric.winmd`.

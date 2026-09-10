@@ -1,8 +1,11 @@
 # rust-metadata
 
-Rust-based generator for `.windows/winmd/Microsoft.ServiceFabric.winmd`, using
+Rust-based generator for `.windows/winmd/Windows.ServiceFabric.winmd`, using
 the published `windows-clang`, `windows-rdl`, `windows-metadata`, and
 `windows-default` crates at version `0.100.0`.
+
+All Service Fabric namespaces use the `Windows.ServiceFabric.*` root, allowing
+direct references to types such as `Windows.Win32.FILETIME`.
 
 ## Pipeline
 
@@ -13,7 +16,7 @@ the published `windows-clang`, `windows-rdl`, `windows-metadata`, and
 4. Apply the Service Fabric alias, type-projection, enum, and agility
    transformations in `src/main.rs` and `seed/`.
 5. Compile the combined RDL directly to
-   `.windows/winmd/Microsoft.ServiceFabric.winmd`.
+   `.windows/winmd/Windows.ServiceFabric.winmd`.
 
 Intermediates are written under `target/gen/`. The embedded
 `Windows.Win32.winmd` there is a generation-only reference and is not

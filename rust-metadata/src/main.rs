@@ -7,7 +7,7 @@ use windows_clang::*;
 /// header. The namespace and traversal header are explicit here so the
 /// generation pipeline has one source of partition configuration.
 struct Partition {
-    /// Winmd namespace, e.g. `Microsoft.ServiceFabric.FabricClient`.
+    /// Winmd namespace, e.g. `Windows.ServiceFabric.FabricClient`.
     namespace: &'static str,
     /// The MIDL-generated header (stem, no extension) that defines this
     /// partition's types, e.g. `FabricClient`.
@@ -16,23 +16,23 @@ struct Partition {
 
 const PARTITIONS: &[Partition] = &[
     Partition {
-        namespace: "Microsoft.ServiceFabric.FabricTypes",
+        namespace: "Windows.ServiceFabric.FabricTypes",
         header: "FabricTypes",
     },
     Partition {
-        namespace: "Microsoft.ServiceFabric.FabricCommon",
+        namespace: "Windows.ServiceFabric.FabricCommon",
         header: "FabricCommon",
     },
     Partition {
-        namespace: "Microsoft.ServiceFabric.FabricClient",
+        namespace: "Windows.ServiceFabric.FabricClient",
         header: "FabricClient",
     },
     Partition {
-        namespace: "Microsoft.ServiceFabric.FabricRuntime",
+        namespace: "Windows.ServiceFabric.FabricRuntime",
         header: "FabricRuntime",
     },
     Partition {
-        namespace: "Microsoft.ServiceFabric.FabricTransport",
+        namespace: "Windows.ServiceFabric.FabricTransport",
         header: "fabrictransport_",
     },
 ];
@@ -61,7 +61,7 @@ fn main() {
     let winmd_out = repo
         .join(".windows")
         .join("winmd")
-        .join("Microsoft.ServiceFabric.winmd");
+        .join("Windows.ServiceFabric.winmd");
     std::fs::create_dir_all(&headers).unwrap();
     std::fs::create_dir_all(&rdl_dir).unwrap();
     std::fs::create_dir_all(winmd_out.parent().unwrap()).unwrap();
@@ -132,21 +132,8 @@ fn main() {
         .to_string_lossy()
         .replace('\\', "/");
 
-    // Self-contained seed defining FILETIME under Microsoft.ServiceFabric.FabricTypes.
-    // The SF surface's only Win32 base *struct* is FILETIME (GUID/HRESULT/IUnknown/
-    // BOOL/BOOLEAN/PCWSTR are windows-core builtins that bindgen never emits).
-    // Defining FILETIME SF-locally and rewriting its references (below) keeps the
-    // final winmd single-rooted under `Microsoft` so the windows-bindgen
-    // `--package` writer can consume it (it panics on a second, bare `Windows` root).
-    let win32_seed = repo
-        .join("rust-metadata")
-        .join("seed")
-        .join("FabricTypesWin32.rdl")
-        .to_string_lossy()
-        .replace('\\', "/");
-
     // Self-contained seed defining `MarshalingBehaviorAttribute` +
-    // `MarshalingType` (under Microsoft.ServiceFabric.Metadata). The post-scrape
+    // `MarshalingType` (under Windows.ServiceFabric.Metadata). The post-scrape
     // rewrite (below) stamps every interface with this attribute so windows-bindgen
     // projects them as thread-agile (`Send` + `Sync`). Compiled into the
     // FabricTypes partition winmd so all later partitions resolve the attribute.
@@ -181,17 +168,9 @@ fn main() {
             .write()
             .unwrap_or_else(|e| panic!("clang scrape of {} failed: {e}", p.header));
 
-        // windows-clang qualifies FILETIME to the external flat Windows.Win32
-        // layout. Rewrite that single reference to the SF-local definition
-        // supplied by the FabricTypesWin32 seed, so nothing lands under a second
-        // `Windows` root. All other Windows::Win32::* references are builtins.
         {
             let text = std::fs::read_to_string(&rdl_path)
                 .unwrap_or_else(|e| panic!("read {} failed: {e}", rdl_path.display()));
-            let rewritten = text.replace(
-                "Windows::Win32::FILETIME",
-                "Microsoft::ServiceFabric::FabricTypes::FILETIME",
-            );
 
             // windows-clang scrapes `const wchar_t*` typedefs (LPCWSTR, and
             // FABRIC_URI which aliases it) as raw `*const u16`. The former
@@ -200,7 +179,7 @@ fn main() {
             // alias at the Win32 PCWSTR builtin so the whole chain (LPCWSTR,
             // FABRIC_URI, and every struct field that uses them) projects as
             // `windows_core::PCWSTR` again.
-            let rewritten = rewritten.replace(
+            let rewritten = text.replace(
                 "type LPCWSTR = *const u16;",
                 "type LPCWSTR = Windows::Win32::PCWSTR;",
             );
@@ -248,12 +227,9 @@ fn main() {
         reader.reference(&win32_winmd);
         // The alias seed lives in the FabricTypes namespace; supply it when
         // compiling that partition so its winmd (and every downstream
-        // reference) carries FABRIC_STRING_PAIR. The FILETIME seed is supplied
-        // the same way so downstream partitions resolve FILETIME to the SF-local
-        // definition rather than an external Windows.Win32 type.
+        // reference) carries FABRIC_STRING_PAIR.
         if p.header == "FabricTypes" {
             reader.input(&seed);
-            reader.input(&win32_seed);
             // Agile marker types (MarshalingBehaviorAttribute + MarshalingType).
             // Compiling them into FabricTypes.winmd lets every later partition
             // resolve the `#[MarshalingBehavior(Agile)]` stamped on its interfaces.
@@ -270,7 +246,6 @@ fn main() {
         rdl_paths.push(rdl_path.to_string_lossy().replace('\\', "/"));
         if p.header == "FabricTypes" {
             rdl_paths.push(seed.clone());
-            rdl_paths.push(win32_seed.clone());
             rdl_paths.push(agile_seed.clone());
         }
         built_winmds.push(part_winmd.to_string_lossy().replace('\\', "/"));
@@ -296,7 +271,7 @@ fn main() {
 }
 
 fn add_agility_attributes(input: &str) -> String {
-    const ATTRIBUTE: &str = "#[Microsoft::ServiceFabric::Metadata::MarshalingBehavior(Agile)]";
+    const ATTRIBUTE: &str = "#[Windows::ServiceFabric::Metadata::MarshalingBehavior(Agile)]";
 
     let mut output = String::with_capacity(input.len());
     for line in input.split_inclusive('\n') {

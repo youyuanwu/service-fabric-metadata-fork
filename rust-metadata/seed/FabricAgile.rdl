@@ -10,16 +10,12 @@
 // threads). SF COM objects are genuinely free-threaded, so marking them agile
 // is accurate, not a shortcut.
 //
-// The attribute type and its `MarshalingType` enum live in the standard
-// WinRT-ish `Windows.Foundation.Metadata` namespace conceptually, but are placed
-// under `Microsoft.ServiceFabric.Metadata` here so the winmd stays single-rooted
-// under `Microsoft` (the `--package` writer panics on a second bare root).
-// `is_agile` only matches on the attribute's *name* and its enum value, not its
-// namespace, so this placement is fine. The post-scrape rewrite in main.rs
-// applies `#[Microsoft::ServiceFabric::Metadata::MarshalingBehavior(Agile)]` to
-// every scraped interface.
+// These marker definitions live alongside Service Fabric metadata under the
+// shared `Windows` root. `is_agile` matches the attribute's name and enum value,
+// not its namespace. The post-scrape rewrite in main.rs applies the marker to
+// every matching IFabric interface.
 #[win32]
-mod Microsoft {
+mod Windows {
     mod ServiceFabric {
         mod Metadata {
             #[repr(i32)]

@@ -1,6 +1,6 @@
 #!/usr/bin/env pwsh
 param(
-    [string]$WinmdPath = ".windows/winmd/Microsoft.ServiceFabric.winmd",
+    [string]$WinmdPath = ".windows/winmd/Windows.ServiceFabric.winmd",
     [switch]$MigrationBaseline
 )
 

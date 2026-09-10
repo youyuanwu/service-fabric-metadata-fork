@@ -2,6 +2,7 @@ use std::path::Path;
 use std::process::Command;
 
 use sf_winmd_gen::validation;
+use windows_metadata::Type;
 
 fn committed_winmd() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -9,7 +10,7 @@ fn committed_winmd() -> std::path::PathBuf {
         .unwrap()
         .join(".windows")
         .join("winmd")
-        .join("Microsoft.ServiceFabric.winmd")
+        .join("Windows.ServiceFabric.winmd")
 }
 
 #[test]
@@ -18,6 +19,33 @@ fn parses_and_compares_real_winmd() {
     let snapshot = validation::load(&path).expect("committed winmd should be readable");
     assert!(validation::type_count(&snapshot) > 1_000);
     assert!(validation::compare(&snapshot, &snapshot).is_empty());
+}
+
+#[test]
+fn uses_windows_root_and_external_filetime() {
+    let index = windows_metadata::reader::Index::read(committed_winmd()).unwrap();
+
+    assert!(index.contains(
+        "Windows.ServiceFabric.FabricTypes",
+        "FABRIC_APPLICATION_PARAMETER"
+    ));
+    assert!(!index.contains("Windows.ServiceFabric.FabricTypes", "FILETIME"));
+    assert!(
+        index
+            .types()
+            .filter(|definition| definition.namespace().starts_with("Windows.ServiceFabric."))
+            .flat_map(|definition| definition.fields())
+            .any(|field| matches!(
+                field.ty(),
+                Type::ValueName(ref name)
+                    if name.namespace == "Windows.Win32" && name.name == "FILETIME"
+            ))
+    );
+    assert!(index.types().all(|definition| {
+        !definition
+            .namespace()
+            .starts_with("Microsoft.ServiceFabric")
+    }));
 }
 
 #[test]

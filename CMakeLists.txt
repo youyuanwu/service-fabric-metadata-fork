@@ -22,7 +22,7 @@ if(fabric_metadata_MAIN_PROJECT)
   )
 
   set(_out_winmd_path
-    ${CMAKE_CURRENT_SOURCE_DIR}/.windows/winmd/Microsoft.ServiceFabric.winmd
+    ${CMAKE_CURRENT_SOURCE_DIR}/.windows/winmd/Windows.ServiceFabric.winmd
   )
 
   file(GLOB_RECURSE _metadata_inputs CONFIGURE_DEPENDS

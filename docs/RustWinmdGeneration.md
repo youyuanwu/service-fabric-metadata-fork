@@ -1,9 +1,13 @@
 # Generating Service Fabric metadata with Rust
 
 `rust-metadata` is the repository's supported generator for
-`.windows/winmd/Microsoft.ServiceFabric.winmd`. It uses the published
+`.windows/winmd/Windows.ServiceFabric.winmd`. It uses the published
 windows-rs metadata crates and does not require a separate managed SDK or
 package restore.
+
+Service Fabric types are emitted under `Windows.ServiceFabric.*`. Sharing the
+`Windows` top-level root with `Windows.Win32.*` lets metadata reference
+`Windows.Win32.FILETIME` directly without defining a Service Fabric-local copy.
 
 ## Pipeline
 
@@ -15,7 +19,7 @@ package restore.
 4. `windows-clang` scrapes five namespace partitions into RDL in dependency
    order.
 5. `windows-rdl` compiles the partitions and seed definitions into the single,
-   self-contained `Microsoft.ServiceFabric.winmd`.
+   self-contained `Windows.ServiceFabric.winmd`.
 
 Intermediate headers, RDL, partition metadata, and the embedded flat Win32
 reference remain under `rust-metadata/target/gen`. Only the final Service
@@ -27,8 +31,9 @@ The generator applies a small set of deterministic transformations after
 scraping:
 
 - Supplies the `FABRIC_STRING_PAIR` alias omitted by the header scraper.
-- Defines `FILETIME` in the Service Fabric namespace so the final metadata
-  remains single-rooted under `Microsoft`.
+- Keeps `FILETIME` as `Windows.Win32.FILETIME`; Service Fabric metadata also
+  uses the `Windows` root, so the final metadata remains single-rooted without
+  a local duplicate definition.
 - Preserves `PCWSTR` projection for wide-string aliases and keeps `FABRIC_URI`
   as an ABI-compatible newtype.
 - Normalizes the `FABRIC_AAD_CLAIMS` spelling.
@@ -59,7 +64,7 @@ Or run the generator directly:
 pwsh -File rust-metadata/run.ps1
 ```
 
-Both commands write `.windows/winmd/Microsoft.ServiceFabric.winmd`.
+Both commands write `.windows/winmd/Windows.ServiceFabric.winmd`.
 
 ## Validate
 
@@ -74,11 +79,11 @@ signatures and parameter metadata, GUIDs, and custom attributes. This avoids a
 dependency on `ildasm` and ignores container details that are not part of the
 typed metadata model.
 
-The migration was also checked once against the retired baseline: the previous
-artifact contained 1,263 types and the Rust artifact contains 1,280 types. All
-272 real `IFabric*` interfaces retained their names, GUIDs, and ordered method
-names. Three duplicate mangled artifacts that did not represent distinct APIs
-were intentionally omitted:
+The initial Rust migration was checked once against the retired baseline: the
+previous artifact contained 1,263 types and the Windows-rooted Rust artifact
+contains 1,279 types. All 272 real `IFabric*` interfaces retained their short
+names, GUIDs, and ordered method names. Three duplicate mangled artifacts that
+did not represent distinct APIs were intentionally omitted:
 
 - `IFabricClientConnectionEventHandler0000`
 - `IFabricClientConnectionEventHandler0001`

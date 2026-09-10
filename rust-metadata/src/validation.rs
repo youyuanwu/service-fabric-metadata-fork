@@ -119,11 +119,13 @@ pub fn compare_migration(baseline: &Snapshot, candidate: &Snapshot) -> Vec<Strin
         .iter()
         .filter(|(name, record)| record.category == "Interface" && is_ifabric(short_name(name)))
         .filter(|(name, _)| !OMITTED_DUPLICATES.contains(&short_name(name)))
+        .map(|(name, record)| (migration_name(name), record))
         .collect::<BTreeMap<_, _>>();
     let candidate_interfaces = candidate
         .types
         .iter()
         .filter(|(name, record)| record.category == "Interface" && is_ifabric(short_name(name)))
+        .map(|(name, record)| (migration_name(name), record))
         .collect::<BTreeMap<_, _>>();
 
     for (name, expected) in &baseline_interfaces {
@@ -423,6 +425,15 @@ fn short_name(qualified: &str) -> &str {
     qualified.rsplit('.').next().unwrap_or(qualified)
 }
 
+fn migration_name(qualified: &str) -> String {
+    qualified
+        .strip_prefix("Microsoft.ServiceFabric.")
+        .map_or_else(
+            || qualified.to_string(),
+            |suffix| format!("Windows.ServiceFabric.{suffix}"),
+        )
+}
+
 fn is_ifabric(name: &str) -> bool {
     name.len() > "IFabric".len()
         && name.starts_with("IFabric")
@@ -461,14 +472,14 @@ mod tests {
 
     #[test]
     fn identical_snapshots_pass() {
-        let input = snapshot(&[("Microsoft.ServiceFabric.IFabricClient", record())]);
+        let input = snapshot(&[("Windows.ServiceFabric.IFabricClient", record())]);
         assert!(compare(&input, &input).is_empty());
     }
 
     #[test]
     fn migration_allows_legacy_duplicate_to_be_absent() {
         let baseline = snapshot(&[(
-            "Microsoft.ServiceFabric.IFabricClientConnectionEventHandler0000",
+            "Windows.ServiceFabric.IFabricClientConnectionEventHandler0000",
             record(),
         )]);
         assert!(compare_migration(&baseline, &snapshot(&[])).is_empty());
@@ -477,7 +488,7 @@ mod tests {
 
     #[test]
     fn non_allowlisted_type_changes_fail() {
-        let baseline = snapshot(&[("Microsoft.ServiceFabric.IFabricClient", record())]);
+        let baseline = snapshot(&[("Windows.ServiceFabric.IFabricClient", record())]);
         let mut changed = record();
         changed.methods.push(MethodRecord {
             name: "Changed".to_string(),
@@ -489,10 +500,10 @@ mod tests {
             return_parameter: None,
             attributes: Vec::new(),
         });
-        let candidate = snapshot(&[("Microsoft.ServiceFabric.IFabricClient", changed)]);
+        let candidate = snapshot(&[("Windows.ServiceFabric.IFabricClient", changed)]);
         assert_eq!(
             compare(&baseline, &candidate),
-            ["Microsoft.ServiceFabric.IFabricClient: methods changed"]
+            ["Windows.ServiceFabric.IFabricClient: methods changed"]
         );
     }
 
@@ -500,15 +511,15 @@ mod tests {
     fn missing_or_extra_agility_fails() {
         let mut missing = record();
         missing.agile = false;
-        let baseline = snapshot(&[("Microsoft.ServiceFabric.IFabricClient", record())]);
-        let candidate = snapshot(&[("Microsoft.ServiceFabric.IFabricClient", missing)]);
+        let baseline = snapshot(&[("Windows.ServiceFabric.IFabricClient", record())]);
+        let candidate = snapshot(&[("Windows.ServiceFabric.IFabricClient", missing)]);
         assert!(
             compare(&baseline, &candidate)
                 .iter()
                 .any(|difference| difference.contains("agility mismatch"))
         );
 
-        let extra = snapshot(&[("Microsoft.ServiceFabric.IExtentLogicalLog", record())]);
+        let extra = snapshot(&[("Windows.ServiceFabric.IExtentLogicalLog", record())]);
         assert!(
             compare(&extra, &extra)
                 .iter()
@@ -521,7 +532,7 @@ mod tests {
         let mut class = record();
         class.category = "Class".to_string();
         class.agile = false;
-        let input = snapshot(&[("Microsoft.ServiceFabric.IFabricFactory", class)]);
+        let input = snapshot(&[("Windows.ServiceFabric.IFabricFactory", class)]);
         assert!(compare_migration(&input, &input).is_empty());
     }
 
@@ -530,25 +541,22 @@ mod tests {
         let baseline = snapshot(&[]);
         let mut helper = record();
         helper.agile = false;
-        let allowed = snapshot(&[(
-            "Microsoft.ServiceFabric.FabricTypes.FILETIME",
-            helper.clone(),
-        )]);
+        let allowed = snapshot(&[("Windows.ServiceFabric.FabricTypes.FILETIME", helper.clone())]);
         assert_eq!(
             compare(&baseline, &allowed),
-            ["unexpected type: Microsoft.ServiceFabric.FabricTypes.FILETIME"]
+            ["unexpected type: Windows.ServiceFabric.FabricTypes.FILETIME"]
         );
 
-        let unexpected = snapshot(&[("Microsoft.ServiceFabric.Other", helper)]);
+        let unexpected = snapshot(&[("Windows.ServiceFabric.Other", helper)]);
         assert_eq!(
             compare(&baseline, &unexpected),
-            ["unexpected type: Microsoft.ServiceFabric.Other"]
+            ["unexpected type: Windows.ServiceFabric.Other"]
         );
     }
 
     #[test]
     fn migration_checks_guid_and_method_order() {
-        let baseline = snapshot(&[("Microsoft.ServiceFabric.IFabricClient", record())]);
+        let baseline = snapshot(&[("Windows.ServiceFabric.IFabricClient", record())]);
         let mut changed = record();
         changed.guid = Some("different".to_string());
         changed.methods.push(MethodRecord {
@@ -561,7 +569,7 @@ mod tests {
             return_parameter: None,
             attributes: Vec::new(),
         });
-        let candidate = snapshot(&[("Microsoft.ServiceFabric.IFabricClient", changed)]);
+        let candidate = snapshot(&[("Windows.ServiceFabric.IFabricClient", changed)]);
         let differences = compare_migration(&baseline, &candidate);
         assert!(
             differences
@@ -576,8 +584,15 @@ mod tests {
     }
 
     #[test]
+    fn migration_accepts_service_fabric_root_rename() {
+        let baseline = snapshot(&[("Microsoft.ServiceFabric.IFabricClient", record())]);
+        let candidate = snapshot(&[("Windows.ServiceFabric.IFabricClient", record())]);
+        assert!(compare_migration(&baseline, &candidate).is_empty());
+    }
+
+    #[test]
     fn strict_comparison_checks_every_record_dimension() {
-        let name = "Microsoft.ServiceFabric.IFabricClient";
+        let name = "Windows.ServiceFabric.IFabricClient";
         let baseline_record = record();
         let baseline = snapshot(&[(name, baseline_record.clone())]);
 
@@ -592,7 +607,7 @@ mod tests {
         );
 
         let mut changed = baseline_record.clone();
-        changed.extends = Some("Microsoft.ServiceFabric.IBase".to_string());
+        changed.extends = Some("Windows.ServiceFabric.IBase".to_string());
         assert!(compare(&baseline, &snapshot(&[(name, changed)]))[0].contains("base type changed"));
 
         let mut changed = baseline_record.clone();
@@ -642,7 +657,7 @@ mod tests {
 
     #[test]
     fn strict_comparison_checks_field_method_and_parameter_details() {
-        let name = "Microsoft.ServiceFabric.IFabricClient";
+        let name = "Windows.ServiceFabric.IFabricClient";
         let mut baseline_record = record();
         baseline_record.fields.push(FieldRecord {
             name: "Value".to_string(),

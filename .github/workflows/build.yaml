@@ -36,5 +36,8 @@ jobs:
     - name: run generate all
       run: cmake --build build --config ${{ matrix.BUILD_TYPE }} --target generate_winmd
 
+    - name: test metadata tooling
+      run: cargo test --manifest-path rust-metadata\Cargo.toml --locked
+
     - name: validate winmd
       run: cmake --build build --config ${{ matrix.BUILD_TYPE }} --target validate_winmd

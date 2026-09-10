@@ -21,8 +21,12 @@ Service Fabric types are emitted under `Windows.ServiceFabric.*`. Sharing the
 5. `windows-rdl` compiles the flat partitions, then `windows-metadata`
    structurally remaps each header's owned items into
    `Windows.ServiceFabric.<Partition>`.
-6. The remapped definitions and external `Windows.Win32` references are written
-   to the single `Windows.ServiceFabric.winmd`.
+6. The remapped metadata is round-tripped through RDL and recompiled with
+   `Windows.Win32.winmd` as a reference. This preserves external assembly
+   resolution scopes that `windows-metadata` 0.100's remapper does not carry
+   into its output.
+7. The generator verifies typed semantic equality across that scope-repair
+   roundtrip and writes the single `Windows.ServiceFabric.winmd`.
 
 Intermediate headers, RDL, partition metadata, and the embedded flat Win32
 reference remain under `rust-metadata/target/gen`. Only the final Service

@@ -16,9 +16,11 @@ direct references to types such as `Windows.Win32.FILETIME`.
    per-header canonicalization.
 4. Compile the flat metadata and structurally remap each partition into its
    `Windows.ServiceFabric.*` namespace.
-5. Apply the Service Fabric-specific enum and agility metadata in `src/main.rs`
+5. Recompile the remapped metadata with the Win32 reference to preserve
+   external assembly-resolution scopes.
+6. Apply the Service Fabric-specific enum and agility metadata in `src/main.rs`
    and `seed/FabricAgile.rdl`.
-6. Write the remapped metadata directly to
+7. Write the remapped metadata directly to
    `.windows/winmd/Windows.ServiceFabric.winmd`.
 
 Intermediates are written under `target/gen/`. The embedded

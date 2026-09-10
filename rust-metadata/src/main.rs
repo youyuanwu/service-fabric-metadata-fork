@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use sf_winmd_gen::validation;
 use windows_clang::*;
 
 const SCRAPE_NAMESPACE: &str = "Windows.Win32";
@@ -219,15 +220,48 @@ fn main() {
         .write()
         .unwrap_or_else(|e| panic!("winmd compile failed: {e}"));
 
-    println!("remapping flat metadata -> {}", winmd_out.display());
+    let remapped_winmd = out.join("Windows.ServiceFabric.remapped.winmd");
+    println!("remapping flat metadata");
     windows_metadata::remap()
         .input(&flat_winmd)
         .source(SCRAPE_NAMESPACE)
         .fallback(SCRAPE_NAMESPACE)
         .routes(routes)
-        .output(&winmd_out)
+        .output(&remapped_winmd)
         .remap()
         .unwrap_or_else(|e| panic!("winmd remap failed: {e}"));
+
+    // Remapper 0.100 does not carry external assembly scopes into its output.
+    // Round-tripping through RDL lets the final reader resolve external Win32
+    // TypeRefs against the supplied reference metadata.
+    let remapped_rdl = out.join("Windows.ServiceFabric.remapped.rdl");
+    windows_rdl::writer()
+        .input(&remapped_winmd)
+        .output(&remapped_rdl)
+        .write()
+        .unwrap_or_else(|e| panic!("remapped RDL write failed: {e}"));
+    let remapped_text = std::fs::read_to_string(&remapped_rdl)
+        .unwrap_or_else(|e| panic!("read {} failed: {e}", remapped_rdl.display()));
+    std::fs::write(
+        &remapped_rdl,
+        format!("use Windows::Win32::*;\n\n{remapped_text}"),
+    )
+    .unwrap_or_else(|e| panic!("write {} failed: {e}", remapped_rdl.display()));
+    windows_rdl::reader()
+        .input(&remapped_rdl)
+        .reference(&win32_winmd)
+        .output(&winmd_out)
+        .write()
+        .unwrap_or_else(|e| panic!("final winmd compile failed: {e}"));
+
+    let remapped = validation::load(&remapped_winmd).expect("remapped metadata should be readable");
+    let final_output = validation::load(&winmd_out).expect("final metadata should be readable");
+    let differences = validation::compare(&remapped, &final_output);
+    assert!(
+        differences.is_empty(),
+        "reference-scope roundtrip changed metadata:\n{}",
+        differences.join("\n")
+    );
 
     println!("wrote {}", winmd_out.display());
 }

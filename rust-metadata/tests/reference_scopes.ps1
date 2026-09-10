@@ -5,10 +5,17 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# windows-metadata's high-level Type representation retains a reference's
+# namespace and name but not its raw ECMA-335 ResolutionScope. Read the metadata
+# tables directly so this test distinguishes a valid external reference from an
+# unresolved module-local TypeRef with the same name.
 $stream = [System.IO.File]::OpenRead((Resolve-Path $WinmdPath))
 try {
     $pe = [System.Reflection.PortableExecutable.PEReader]::new($stream)
     $reader = [System.Reflection.Metadata.PEReaderExtensions]::GetMetadataReader($pe)
+
+    # These foundational references exercise both Win32 value types and COM/
+    # string wrappers used throughout the Service Fabric surface.
     $required = [System.Collections.Generic.HashSet[string]]::new(
         [string[]]@('BOOL', 'FILETIME', 'GUID', 'HRESULT', 'IUnknown', 'PCWSTR')
     )
@@ -28,6 +35,8 @@ try {
             throw "$namespace.$name has $($reference.ResolutionScope.Kind) scope; expected AssemblyReference"
         }
 
+        # ResolutionScope stores a coded AssemblyRef row. Resolve that row and
+        # verify it names the external flat metadata assembly.
         $row = [System.Reflection.Metadata.Ecma335.MetadataTokens]::GetRowNumber(
             $reference.ResolutionScope
         )
@@ -43,6 +52,8 @@ try {
     if ($count -eq 0) {
         throw 'No external Windows.Win32 type references were found'
     }
+    # A nonempty set catches accidental loss of a whole reference category even
+    # when other Windows.Win32 TypeRefs still keep the loop nonempty.
     if ($required.Count -ne 0) {
         throw "Required external references were not found: $([string]::Join(', ', $required))"
     }

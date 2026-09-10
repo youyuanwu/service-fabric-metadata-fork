@@ -1,7 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use sf_winmd_validation as validation;
 use windows_clang::*;
 
 const SCRAPE_NAMESPACE: &str = "Windows.Win32";
@@ -252,13 +251,17 @@ fn main() {
         .write()
         .unwrap_or_else(|e| panic!("final winmd compile failed: {e}"));
 
-    let remapped = validation::load(&remapped_winmd).expect("remapped metadata should be readable");
-    let final_output = validation::load(&winmd_out).expect("final metadata should be readable");
-    let differences = validation::compare(&remapped, &final_output);
-    assert!(
-        differences.is_empty(),
-        "reference-scope roundtrip changed metadata:\n{}",
-        differences.join("\n")
+    let final_rdl = out.join("Windows.ServiceFabric.final.rdl");
+    windows_rdl::writer()
+        .input(&winmd_out)
+        .output(&final_rdl)
+        .write()
+        .unwrap_or_else(|e| panic!("final RDL write failed: {e}"));
+    let final_text = std::fs::read_to_string(&final_rdl)
+        .unwrap_or_else(|e| panic!("read {} failed: {e}", final_rdl.display()));
+    assert_eq!(
+        remapped_text, final_text,
+        "reference-scope roundtrip changed normalized RDL"
     );
 
     println!("wrote {}", winmd_out.display());

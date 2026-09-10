@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "rust-metadata",
-    "rust-metadata/validation",
 ]
 resolver = "3"
 

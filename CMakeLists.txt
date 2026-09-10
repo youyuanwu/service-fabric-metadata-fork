@@ -20,6 +20,16 @@ if(fabric_metadata_MAIN_PROJECT)
       NAMES pwsh.exe pwsh
       REQUIRED
   )
+  find_program (
+      cargo_exe
+      NAMES cargo.exe cargo
+      REQUIRED
+  )
+  find_program (
+      git_exe
+      NAMES git.exe git
+      REQUIRED
+  )
 
   set(_out_winmd_path
     ${CMAKE_CURRENT_SOURCE_DIR}/.windows/winmd/Windows.ServiceFabric.winmd
@@ -30,14 +40,14 @@ if(fabric_metadata_MAIN_PROJECT)
     ${CMAKE_CURRENT_SOURCE_DIR}/internal_idl/*.idl
     ${CMAKE_CURRENT_SOURCE_DIR}/rust-metadata/app/*.rs
     ${CMAKE_CURRENT_SOURCE_DIR}/rust-metadata/seed/*.rdl
-    ${CMAKE_CURRENT_SOURCE_DIR}/rust-metadata/validation/src/*.rs
+    ${CMAKE_CURRENT_SOURCE_DIR}/rust-metadata/tests/*.ps1
+    ${CMAKE_CURRENT_SOURCE_DIR}/rust-metadata/tests/*.rs
   )
   list(APPEND _metadata_inputs
     ${CMAKE_CURRENT_SOURCE_DIR}/Cargo.toml
     ${CMAKE_CURRENT_SOURCE_DIR}/Cargo.lock
     ${CMAKE_CURRENT_SOURCE_DIR}/rust-metadata/Cargo.toml
     ${CMAKE_CURRENT_SOURCE_DIR}/rust-metadata/run.ps1
-    ${CMAKE_CURRENT_SOURCE_DIR}/rust-metadata/validation/Cargo.toml
   )
 
   add_custom_command(
@@ -58,7 +68,9 @@ if(fabric_metadata_MAIN_PROJECT)
   )
 
   add_custom_target(validate_winmd
-    COMMAND ${pwsh_exe} -NoProfile -File ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_winmd.ps1
+    COMMAND ${cargo_exe} test --workspace --locked
+    COMMAND ${git_exe} --no-pager diff --exit-code HEAD -- .windows/winmd/Windows.ServiceFabric.winmd
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     DEPENDS generate_winmd
     VERBATIM
   )

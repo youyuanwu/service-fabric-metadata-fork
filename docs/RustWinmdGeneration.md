@@ -25,7 +25,7 @@ Service Fabric types are emitted under `Windows.ServiceFabric.*`. Sharing the
    `Windows.Win32.winmd` as a reference. This preserves external assembly
    resolution scopes that `windows-metadata` 0.100's remapper does not carry
    into its output.
-7. The generator verifies typed semantic equality across that scope-repair
+7. The generator verifies normalized RDL equality across that scope-repair
    roundtrip and writes the single `Windows.ServiceFabric.winmd`.
 
 Intermediate headers, RDL, partition metadata, and the embedded flat Win32
@@ -88,12 +88,19 @@ Both commands write `.windows/winmd/Windows.ServiceFabric.winmd`.
 cmake --build build --target validate_winmd
 ```
 
-Validation uses `windows-metadata` to compare the regenerated artifact with the
-committed Rust-generated baseline. It compares type sets, type flags,
-inheritance, implemented interfaces, class layout, fields, constants, method
-signatures and parameter metadata, GUIDs, and custom attributes. This avoids a
-dependency on `ildasm` and ignores container details that are not part of the
-typed metadata model.
+Validation runs the focused metadata integration tests and then requires the
+deterministically regenerated binary to match the committed artifact exactly:
+
+```pwsh
+cargo test --workspace --locked
+git diff --exit-code HEAD -- .windows/winmd/Windows.ServiceFabric.winmd
+```
+
+The tests check namespace ownership, type counts and uniqueness, canonical
+Win32 references, Service Fabric aliases, source-defined spellings, and the
+`IFabric*` agility contract. A raw ECMA-335 check also verifies that every
+external `Windows.Win32` TypeRef resolves through the `Windows.Win32`
+AssemblyRef rather than the local module.
 
 The initial Rust migration was checked once against the retired baseline: the
 previous artifact contained 1,263 types and the Windows-rooted Rust artifact
@@ -113,6 +120,6 @@ did not represent distinct APIs were intentionally omitted:
   `SF_METADATA_WINDOWS_KITS_BIN`.
 - **libclang provisioning fails**: verify network access on the first run; the
   provisioned component is cached for later runs.
-- **Validation reports differences**: regenerate intentionally, inspect the
-  typed difference report, and commit the updated winmd only when the metadata
-  change is expected.
+- **Validation reports differences**: inspect the failing invariant or generated
+  binary diff, and commit the updated winmd only when the metadata change is
+  expected.

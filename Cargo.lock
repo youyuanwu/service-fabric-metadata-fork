@@ -63,18 +63,10 @@ dependencies = [
 name = "sf-winmd-gen"
 version = "0.0.0"
 dependencies = [
- "sf-winmd-validation",
  "windows-clang",
  "windows-default",
  "windows-metadata",
  "windows-rdl",
-]
-
-[[package]]
-name = "sf-winmd-validation"
-version = "0.0.0"
-dependencies = [
- "windows-metadata",
 ]
 
 [[package]]

@@ -47,12 +47,15 @@ environment, and runs the locked release build.
 From the repository root:
 
 ```pwsh
-pwsh -File scripts/check_winmd.ps1
+cargo test --workspace --locked
 ```
 
-The validator reads both winmd files with `windows-metadata` and compares their
-typed structures. From the repository root, `cargo test --workspace --locked`
-runs the validator and generator tests.
+The focused integration tests validate the committed metadata namespaces,
+aliases, external Win32 references, type uniqueness, and interface agility.
+They also inspect raw TypeRef resolution scopes through
+`System.Reflection.Metadata`.
+The CMake `validate_winmd` target additionally verifies that regeneration does
+not change the committed binary.
 
 See [the detailed generation guide](../docs/RustWinmdGeneration.md) for design
 decisions, transformations, and troubleshooting.

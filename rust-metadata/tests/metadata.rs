@@ -1,8 +1,9 @@
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::process::Command;
 
-use sf_winmd_validation as validation;
-use windows_metadata::Type;
+use windows_metadata::reader::TypeCategory;
+use windows_metadata::{HasAttributes, Type, Value};
 
 fn committed_winmd() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -11,14 +12,6 @@ fn committed_winmd() -> std::path::PathBuf {
         .join(".windows")
         .join("winmd")
         .join("Windows.ServiceFabric.winmd")
-}
-
-#[test]
-fn parses_and_compares_real_winmd() {
-    let path = committed_winmd();
-    let snapshot = validation::load(&path).expect("committed winmd should be readable");
-    assert!(validation::type_count(&snapshot) > 1_000);
-    assert!(validation::compare(&snapshot, &snapshot).is_empty());
 }
 
 #[test]
@@ -93,26 +86,65 @@ fn preserves_idl_type_spelling() {
 }
 
 #[test]
-fn command_reports_success_for_identical_winmds() {
-    let path = committed_winmd();
-    let output = Command::new(env!("CARGO_BIN_EXE_validate_winmd"))
-        .arg(&path)
-        .arg(&path)
-        .output()
-        .expect("validator should run");
+fn type_definitions_are_unique_and_complete() {
+    let index = windows_metadata::reader::Index::read(committed_winmd()).unwrap();
+    let definitions = index.types().collect::<Vec<_>>();
+    assert_eq!(definitions.len(), 1_278);
 
-    assert!(output.status.success());
-    assert!(String::from_utf8_lossy(&output.stdout).contains("winmd validation passed"));
+    let mut names = BTreeSet::new();
+    for definition in definitions {
+        assert!(names.insert(format!("{}.{}", definition.namespace(), definition.name())));
+    }
 }
 
 #[test]
-fn command_rejects_an_unreadable_baseline() {
-    let output = Command::new(env!("CARGO_BIN_EXE_validate_winmd"))
-        .arg("missing-baseline.winmd")
-        .arg(committed_winmd())
-        .output()
-        .expect("validator should run");
+fn all_ifabric_interfaces_are_agile() {
+    let index = windows_metadata::reader::Index::read(committed_winmd()).unwrap();
+    let interfaces = index
+        .types()
+        .filter(|definition| definition.category() == TypeCategory::Interface)
+        .filter(|definition| {
+            definition.name().len() > "IFabric".len()
+                && definition.name().starts_with("IFabric")
+                && definition
+                    .name()
+                    .chars()
+                    .all(|character| character.is_ascii_alphanumeric() || character == '_')
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(interfaces.len(), 272);
 
-    assert_eq!(output.status.code(), Some(2));
-    assert!(String::from_utf8_lossy(&output.stderr).contains("failed to read metadata"));
+    for interface in interfaces {
+        let markers = interface
+            .attributes()
+            .filter(|attribute| attribute.name() == "MarshalingBehaviorAttribute")
+            .collect::<Vec<_>>();
+        assert_eq!(
+            markers.len(),
+            1,
+            "{}.{} must have one agility marker",
+            interface.namespace(),
+            interface.name()
+        );
+        assert!(markers[0].value().iter().any(|(_, value)| match value {
+            Value::I32(2) => true,
+            Value::EnumValue(_, inner) => matches!(inner.as_ref(), Value::I32(2)),
+            _ => false,
+        }));
+    }
+}
+
+#[test]
+fn external_win32_references_have_assembly_scope() {
+    let script = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("reference_scopes.ps1");
+    let status = Command::new("pwsh")
+        .args(["-NoProfile", "-File"])
+        .arg(script)
+        .arg("-WinmdPath")
+        .arg(committed_winmd())
+        .status()
+        .expect("PowerShell 7 is required by the metadata generation toolchain");
+    assert!(status.success());
 }

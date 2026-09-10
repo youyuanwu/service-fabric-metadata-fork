@@ -49,6 +49,28 @@ fn uses_windows_root_and_external_filetime() {
 }
 
 #[test]
+fn resolves_string_pair_alias_to_application_parameter() {
+    let index = windows_metadata::reader::Index::read(committed_winmd()).unwrap();
+    assert!(!index.contains("Windows.ServiceFabric.FabricTypes", "FABRIC_STRING_PAIR"));
+
+    let map = index.expect("Windows.ServiceFabric.FabricTypes", "FABRIC_STRING_MAP");
+    let items = map
+        .fields()
+        .find(|field| field.name() == "Items")
+        .expect("FABRIC_STRING_MAP.Items");
+    assert!(matches!(
+        items.ty(),
+        Type::PtrConst(inner, 1)
+            if matches!(
+                inner.as_ref(),
+                Type::ValueName(name)
+                    if name.namespace == "Windows.ServiceFabric.FabricTypes"
+                        && name.name == "FABRIC_APPLICATION_PARAMETER"
+            )
+    ));
+}
+
+#[test]
 fn command_reports_success_for_identical_winmds() {
     let path = committed_winmd();
     let output = Command::new(env!("CARGO_BIN_EXE_validate_winmd"))

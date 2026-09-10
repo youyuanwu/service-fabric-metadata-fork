@@ -18,7 +18,7 @@ Service Fabric types are emitted under `Windows.ServiceFabric.*`. Sharing the
    headers.
 4. `windows-clang` scrapes five namespace partitions into RDL in dependency
    order.
-5. `windows-rdl` compiles the partitions and seed definitions into the single,
+5. `windows-rdl` compiles the partitions and agility marker definitions into the single,
    self-contained `Windows.ServiceFabric.winmd`.
 
 Intermediate headers, RDL, partition metadata, and the embedded flat Win32
@@ -30,7 +30,10 @@ Fabric metadata file is committed.
 The generator applies a small set of deterministic transformations after
 scraping:
 
-- Supplies the `FABRIC_STRING_PAIR` alias omitted by the header scraper.
+- Resolves the omitted `FABRIC_STRING_PAIR` alias to its ABI-identical
+  underlying `FABRIC_APPLICATION_PARAMETER` struct. The rewrite is constrained
+  to the single `FABRIC_STRING_MAP.Items` field and fails if the scraper output
+  no longer has exactly that shape.
 - Keeps `FILETIME` as `Windows.Win32.FILETIME`; Service Fabric metadata also
   uses the `Windows` root, so the final metadata remains single-rooted without
   a local duplicate definition.
@@ -43,7 +46,7 @@ scraping:
   `MarshalingBehaviorAttribute(Agile)` so binding generation retains the
   expected thread-agility behavior. Non-matching interfaces are not marked.
 
-The seed definitions are in `rust-metadata/seed/`.
+The agility marker definitions are in `rust-metadata/seed/FabricAgile.rdl`.
 
 ## Generate
 
@@ -81,7 +84,7 @@ typed metadata model.
 
 The initial Rust migration was checked once against the retired baseline: the
 previous artifact contained 1,263 types and the Windows-rooted Rust artifact
-contains 1,279 types. All 272 real `IFabric*` interfaces retained their short
+contains 1,278 types. All 272 real `IFabric*` interfaces retained their short
 names, GUIDs, and ordered method names. Three duplicate mangled artifacts that
 did not represent distinct APIs were intentionally omitted:
 

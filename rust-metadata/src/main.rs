@@ -123,15 +123,6 @@ fn main() {
     let mut rdl_paths: Vec<String> = Vec::new();
     let mut built_winmds: Vec<String> = Vec::new();
 
-    // Seed RDL supplying the MIDL struct alias windows-clang drops (see the file
-    // for details). It belongs to the FabricTypes namespace.
-    let seed = repo
-        .join("rust-metadata")
-        .join("seed")
-        .join("FabricTypes.rdl")
-        .to_string_lossy()
-        .replace('\\', "/");
-
     // Self-contained seed defining `MarshalingBehaviorAttribute` +
     // `MarshalingType` (under Windows.ServiceFabric.Metadata). The post-scrape
     // rewrite (below) stamps every interface with this attribute so windows-bindgen
@@ -197,6 +188,12 @@ fn main() {
             let rewritten =
                 rewritten.replace("type FABRIC_URI = LPCWSTR;", "type FABRIC_URI = *mut void;");
 
+            let rewritten = if p.header == "FabricTypes" {
+                resolve_string_pair_alias(&rewritten)
+            } else {
+                rewritten
+            };
+
             // windows-clang scrapes the SF header's `FABRIC_AAD_ClAIMS_RETRIEVAL_METADATA`
             // types with a lowercase `l` (a typo carried from the MIDL output). The
             // previous committed baseline exposes them as `...CLAIMS...`; normalize to
@@ -225,11 +222,7 @@ fn main() {
         let mut reader = windows_rdl::reader();
         reader.input(&rdl_path);
         reader.reference(&win32_winmd);
-        // The alias seed lives in the FabricTypes namespace; supply it when
-        // compiling that partition so its winmd (and every downstream
-        // reference) carries FABRIC_STRING_PAIR.
         if p.header == "FabricTypes" {
-            reader.input(&seed);
             // Agile marker types (MarshalingBehaviorAttribute + MarshalingType).
             // Compiling them into FabricTypes.winmd lets every later partition
             // resolve the `#[MarshalingBehavior(Agile)]` stamped on its interfaces.
@@ -245,7 +238,6 @@ fn main() {
 
         rdl_paths.push(rdl_path.to_string_lossy().replace('\\', "/"));
         if p.header == "FabricTypes" {
-            rdl_paths.push(seed.clone());
             rdl_paths.push(agile_seed.clone());
         }
         built_winmds.push(part_winmd.to_string_lossy().replace('\\', "/"));
@@ -297,6 +289,18 @@ fn add_agility_attributes(input: &str) -> String {
         output.push_str(line);
     }
     output
+}
+
+fn resolve_string_pair_alias(input: &str) -> String {
+    const ALIAS: &str = "Items: *const FABRIC_STRING_PAIR,";
+    const UNDERLYING: &str = "Items: *const FABRIC_APPLICATION_PARAMETER,";
+
+    assert_eq!(
+        input.matches(ALIAS).count(),
+        1,
+        "expected exactly one FABRIC_STRING_PAIR map field"
+    );
+    input.replace(ALIAS, UNDERLYING)
 }
 
 /// Materializes the flat Win32 metadata embedded by the published
@@ -355,7 +359,7 @@ fn run_midl(midl: &Path, repo: &Path, dir: &str, idl: &str, headers: &Path) {
 
 #[cfg(test)]
 mod tests {
-    use super::add_agility_attributes;
+    use super::{add_agility_attributes, resolve_string_pair_alias};
 
     #[test]
     fn marks_only_ifabric_interfaces_as_agile() {
@@ -375,5 +379,20 @@ mod tests {
             !output.contains("MarshalingBehavior(Agile)]\n            interface IExtentLogicalLog")
         );
         assert!(!output.contains("MarshalingBehavior(Agile)]\n            interface IFabric :"));
+    }
+
+    #[test]
+    fn resolves_string_pair_to_its_underlying_struct() {
+        let input = "struct FABRIC_STRING_MAP {\n    Items: *const FABRIC_STRING_PAIR,\n}";
+        assert_eq!(
+            resolve_string_pair_alias(input),
+            "struct FABRIC_STRING_MAP {\n    Items: *const FABRIC_APPLICATION_PARAMETER,\n}"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "expected exactly one FABRIC_STRING_PAIR map field")]
+    fn rejects_missing_string_pair_alias() {
+        resolve_string_pair_alias("struct FABRIC_STRING_MAP {}");
     }
 }

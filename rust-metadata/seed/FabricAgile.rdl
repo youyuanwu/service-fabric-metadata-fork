@@ -15,7 +15,7 @@
 // not its namespace. The post-scrape rewrite in main.rs applies the marker to
 // every matching IFabric interface.
 #[win32]
-mod Microsoft {
+mod Windows {
     mod ServiceFabric {
         mod Metadata {
             #[repr(i32)]

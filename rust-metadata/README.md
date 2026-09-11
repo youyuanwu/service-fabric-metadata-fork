@@ -1,11 +1,11 @@
 # rust-metadata
 
-Rust-based generator for `.windows/winmd/Microsoft.ServiceFabric.winmd`, using
+Rust-based generator for `.windows/winmd/Windows.ServiceFabric.winmd`, using
 the published `windows-clang`, `windows-rdl`, `windows-metadata`, and
 `windows-default` crates at version `0.100.0`.
 
-All Service Fabric namespaces use the `Microsoft.ServiceFabric.*` root and
-reference native Windows types through the external `Windows.Win32` assembly.
+All Service Fabric namespaces use the `Windows.ServiceFabric.*` root, allowing
+direct references to types such as `Windows.Win32.FILETIME`.
 
 ## Pipeline
 
@@ -15,14 +15,14 @@ reference native Windows types through the external `Windows.Win32` assembly.
 3. Scrape the five headers into flat RDL partitions using windows-rs's
    per-header canonicalization.
 4. Compile the flat metadata and structurally remap each partition into its
-   `Microsoft.ServiceFabric.*` namespace.
+   `Windows.ServiceFabric.*` namespace.
 5. Recompile the remapped metadata with the Win32 reference to preserve
    external assembly-resolution scopes.
 6. Apply the Service Fabric-specific enum and agility metadata in
    `app/generate.rs`
    and `seed/FabricAgile.rdl`.
 7. Write the remapped metadata directly to
-   `.windows/winmd/Microsoft.ServiceFabric.winmd`.
+   `.windows/winmd/Windows.ServiceFabric.winmd`.
 
 Intermediates are written under the repository-root `target/metadata-gen/`.
 The embedded

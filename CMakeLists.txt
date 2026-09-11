@@ -1,3 +1,8 @@
+# ------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License (MIT). See License.txt in the repo root for license information.
+# ------------------------------------------------------------
+
 cmake_minimum_required(VERSION 3.14)
 
 project(fabric-metadata LANGUAGES)

@@ -102,6 +102,11 @@ Win32 references, Service Fabric aliases, source-defined spellings, and the
 external `Windows.Win32` TypeRef resolves through the `Windows.Win32`
 AssemblyRef rather than the local module.
 
+The suite also runs the downstream package scenario with
+`windows-bindgen 0.100.0`, the custom Service Fabric winmd, `--in default`, and
+`--package`. Keeping all owned metadata under the top-level `Windows` root
+avoids the package writer's multiple-root panic.
+
 The initial Rust migration was checked once against the retired baseline: the
 previous artifact contained 1,263 types and the Windows-rooted Rust artifact
 contains 1,278 types. All 272 real `IFabric*` interfaces retained their short

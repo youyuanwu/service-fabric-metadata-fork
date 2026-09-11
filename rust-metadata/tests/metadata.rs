@@ -148,3 +148,38 @@ fn external_win32_references_have_assembly_scope() {
         .expect("PowerShell 7 is required by the metadata generation toolchain");
     assert!(status.success());
 }
+
+#[test]
+fn package_bindgen_supports_default_metadata() {
+    let output = std::env::temp_dir().join(format!(
+        "service-fabric-bindgen-package-{}",
+        std::process::id()
+    ));
+    if output.exists() {
+        std::fs::remove_dir_all(&output).unwrap();
+    }
+    std::fs::create_dir_all(&output).unwrap();
+    std::fs::write(
+        output.join("Cargo.toml"),
+        "[package]\nname = \"bindgen-probe\"\nversion = \"0.0.0\"\nedition = \"2024\"\n\n[features]\n# generated features\n",
+    )
+    .unwrap();
+
+    let input = committed_winmd();
+    let args = vec![
+        "--in".to_string(),
+        input.to_string_lossy().into_owned(),
+        "--in".to_string(),
+        "default".to_string(),
+        "--out".to_string(),
+        output.to_string_lossy().into_owned(),
+        "--package".to_string(),
+        "--filter".to_string(),
+        "Windows.ServiceFabric.FabricTypes".to_string(),
+    ];
+    windows_bindgen::bindgen(args);
+
+    assert!(output.join("Cargo.toml").is_file());
+    assert!(output.join("src").is_dir());
+    std::fs::remove_dir_all(output).unwrap();
+}

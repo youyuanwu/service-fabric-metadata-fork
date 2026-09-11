@@ -53,7 +53,8 @@ cargo test --workspace --locked
 The focused integration tests validate the committed metadata namespaces,
 aliases, external Win32 references, type uniqueness, and interface agility.
 They also inspect raw TypeRef resolution scopes through
-`System.Reflection.Metadata`.
+`System.Reflection.Metadata` and exercise downstream `windows-bindgen
+--package` generation with the default metadata inputs.
 The CMake `validate_winmd` target additionally verifies that regeneration does
 not change the committed binary.
 

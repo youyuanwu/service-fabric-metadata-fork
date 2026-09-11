@@ -32,7 +32,7 @@ if(fabric_metadata_MAIN_PROJECT)
   )
 
   set(_out_winmd_path
-    ${CMAKE_CURRENT_SOURCE_DIR}/.windows/winmd/Windows.ServiceFabric.winmd
+    ${CMAKE_CURRENT_SOURCE_DIR}/.windows/winmd/Microsoft.ServiceFabric.winmd
   )
 
   file(GLOB_RECURSE _metadata_inputs CONFIGURE_DEPENDS
@@ -69,7 +69,7 @@ if(fabric_metadata_MAIN_PROJECT)
 
   add_custom_target(validate_winmd
     COMMAND ${cargo_exe} test --workspace --locked
-    COMMAND ${git_exe} --no-pager diff --exit-code HEAD -- .windows/winmd/Windows.ServiceFabric.winmd
+    COMMAND ${git_exe} --no-pager diff --exit-code HEAD -- .windows/winmd/Microsoft.ServiceFabric.winmd
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     DEPENDS generate_winmd
     VERBATIM

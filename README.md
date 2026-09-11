@@ -26,9 +26,9 @@ cmake --build build --target validate_winmd
 # Contents
 idl from https://github.com/microsoft/service-fabric/tree/master/src/prod/src/idl into [idl](./idl/) and [internal_idl](./internal_idl/)
 
-`Windows.ServiceFabric.winmd`, used to generate C# or Rust bindings, is in the
-[.windows](./.windows) folder. Its metadata namespaces are rooted at
-`Windows.ServiceFabric`.
+`Microsoft.ServiceFabric.winmd`, used to generate C# or Rust bindings, is in
+the [.windows](./.windows) folder. Its metadata namespaces are rooted at
+`Microsoft.ServiceFabric`.
 
 # Rust
 Exposes fabric support libs to rust lang through build.rs.

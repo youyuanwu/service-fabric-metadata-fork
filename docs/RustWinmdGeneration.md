@@ -1,13 +1,14 @@
 # Generating Service Fabric metadata with Rust
 
 `rust-metadata` is the repository's supported generator for
-`.windows/winmd/Windows.ServiceFabric.winmd`. It uses the published
+`.windows/winmd/Microsoft.ServiceFabric.winmd`. It uses the published
 windows-rs metadata crates and does not require a separate managed SDK or
 package restore.
 
-Service Fabric types are emitted under `Windows.ServiceFabric.*`. Sharing the
-`Windows` top-level root with `Windows.Win32.*` lets metadata reference
-`Windows.Win32.FILETIME` directly without defining a Service Fabric-local copy.
+Service Fabric types are emitted under `Microsoft.ServiceFabric.*` and refer to
+native Windows types through the external `Windows.Win32` metadata assembly.
+This allows direct `Windows.Win32.FILETIME` references without defining a
+Service Fabric-local copy.
 
 ## Pipeline
 
@@ -20,13 +21,13 @@ Service Fabric types are emitted under `Windows.ServiceFabric.*`. Sharing the
    partitions in dependency order.
 5. `windows-rdl` compiles the flat partitions, then `windows-metadata`
    structurally remaps each header's owned items into
-   `Windows.ServiceFabric.<Partition>`.
+   `Microsoft.ServiceFabric.<Partition>`.
 6. The remapped metadata is round-tripped through RDL and recompiled with
    `Windows.Win32.winmd` as a reference. This preserves external assembly
    resolution scopes that `windows-metadata` 0.100's remapper does not carry
    into its output.
 7. The generator verifies normalized RDL equality across that scope-repair
-   roundtrip and writes the single `Windows.ServiceFabric.winmd`.
+   roundtrip and writes the single `Microsoft.ServiceFabric.winmd`.
 
 Intermediate headers, RDL, partition metadata, and the embedded flat Win32
 reference remain under `target/metadata-gen`. Only the final Service
@@ -80,7 +81,7 @@ Or run the generator directly:
 pwsh -File rust-metadata/run.ps1
 ```
 
-Both commands write `.windows/winmd/Windows.ServiceFabric.winmd`.
+Both commands write `.windows/winmd/Microsoft.ServiceFabric.winmd`.
 
 ## Validate
 
@@ -93,7 +94,7 @@ deterministically regenerated binary to match the committed artifact exactly:
 
 ```pwsh
 cargo test --workspace --locked
-git diff --exit-code HEAD -- .windows/winmd/Windows.ServiceFabric.winmd
+git diff --exit-code HEAD -- .windows/winmd/Microsoft.ServiceFabric.winmd
 ```
 
 The tests check namespace ownership, type counts and uniqueness, canonical
@@ -103,8 +104,8 @@ external `Windows.Win32` TypeRef resolves through the `Windows.Win32`
 AssemblyRef rather than the local module.
 
 The initial Rust migration was checked once against the retired baseline: the
-previous artifact contained 1,263 types and the Windows-rooted Rust artifact
-contains 1,278 types. All 272 real `IFabric*` interfaces retained their short
+previous artifact contained 1,263 types and the Rust artifact contains 1,278
+types. All 272 real `IFabric*` interfaces retained their short
 names, GUIDs, and ordered method names. Three duplicate mangled artifacts that
 did not represent distinct APIs were intentionally omitted:
 

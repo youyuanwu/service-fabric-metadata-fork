@@ -4,7 +4,7 @@ use std::process::Command;
 use windows_clang::*;
 
 const SCRAPE_NAMESPACE: &str = "Windows.Win32";
-const OUTPUT_ROOT: &str = "Windows.ServiceFabric";
+const OUTPUT_ROOT: &str = "Microsoft.ServiceFabric";
 
 /// MIDL-generated header stems in dependency order. Per-header scraping appends
 /// each stem to `OUTPUT_ROOT` to form the final metadata namespace.
@@ -40,7 +40,7 @@ fn main() {
     let winmd_out = repo
         .join(".windows")
         .join("winmd")
-        .join("Windows.ServiceFabric.winmd");
+        .join("Microsoft.ServiceFabric.winmd");
     recreate_dir(&headers);
     recreate_dir(&rdl_dir);
     std::fs::create_dir_all(winmd_out.parent().unwrap()).unwrap();
@@ -100,7 +100,7 @@ fn main() {
     let mut routes = std::collections::HashMap::<String, String>::new();
 
     // Self-contained seed defining `MarshalingBehaviorAttribute` +
-    // `MarshalingType` (under Windows.ServiceFabric.Metadata). The post-scrape
+    // `MarshalingType` (under Microsoft.ServiceFabric.Metadata). The post-scrape
     // rewrite (below) stamps every interface with this attribute so windows-bindgen
     // projects them as thread-agile (`Send` + `Sync`). Compiled into the
     // FabricTypes partition winmd so all later partitions resolve the attribute.
@@ -208,7 +208,7 @@ fn main() {
     // 4. Compile the flat RDL partitions, then structurally remap each owned
     // item to its header namespace. Unrouted Win32 references remain external.
     println!("compiling {} flat RDL inputs", rdl_paths.len(),);
-    let flat_winmd = out.join("Windows.ServiceFabric.flat.winmd");
+    let flat_winmd = out.join("Microsoft.ServiceFabric.flat.winmd");
     let mut reader = windows_rdl::reader();
     reader.inputs(&rdl_paths);
     reader.reference(&win32_winmd);
@@ -217,7 +217,7 @@ fn main() {
         .write()
         .unwrap_or_else(|e| panic!("winmd compile failed: {e}"));
 
-    let remapped_winmd = out.join("Windows.ServiceFabric.remapped.winmd");
+    let remapped_winmd = out.join("Microsoft.ServiceFabric.remapped.winmd");
     println!("remapping flat metadata");
     windows_metadata::remap()
         .input(&flat_winmd)
@@ -231,7 +231,7 @@ fn main() {
     // Remapper 0.100 does not carry external assembly scopes into its output.
     // Round-tripping through RDL lets the final reader resolve external Win32
     // TypeRefs against the supplied reference metadata.
-    let remapped_rdl = out.join("Windows.ServiceFabric.remapped.rdl");
+    let remapped_rdl = out.join("Microsoft.ServiceFabric.remapped.rdl");
     windows_rdl::writer()
         .input(&remapped_winmd)
         .output(&remapped_rdl)
@@ -251,7 +251,7 @@ fn main() {
         .write()
         .unwrap_or_else(|e| panic!("final winmd compile failed: {e}"));
 
-    let final_rdl = out.join("Windows.ServiceFabric.final.rdl");
+    let final_rdl = out.join("Microsoft.ServiceFabric.final.rdl");
     windows_rdl::writer()
         .input(&winmd_out)
         .output(&final_rdl)
@@ -277,7 +277,7 @@ fn recreate_dir(path: &Path) {
 }
 
 fn add_agility_attributes(input: &str) -> String {
-    const ATTRIBUTE: &str = "#[Windows::ServiceFabric::Metadata::MarshalingBehavior(Agile)]";
+    const ATTRIBUTE: &str = "#[Microsoft::ServiceFabric::Metadata::MarshalingBehavior(Agile)]";
 
     let mut output = String::with_capacity(input.len());
     for line in input.split_inclusive('\n') {

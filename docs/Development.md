@@ -21,7 +21,7 @@ cmake --build build --target validate_winmd
 ```
 
 The generation target enters the Visual Studio developer environment and writes
-`.windows/winmd/Windows.ServiceFabric.winmd`. The validation target runs the
+`.windows/winmd/Microsoft.ServiceFabric.winmd`. The validation target runs the
 metadata integration tests and verifies that the regenerated artifact matches
 the committed binary.
 
